@@ -1,6 +1,6 @@
 "use client";
 
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { Show, UserButton } from "@clerk/nextjs";
 import { ChevronDown, Globe2, Search, ShoppingCart, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -90,7 +90,7 @@ export function SiteHeader() {
         <div className="mx-auto max-w-[1586px] px-6">
           <div className="flex h-[88px] items-center gap-9">
             <a href="/" className="flex min-w-[260px] items-center text-[30px] font-black tracking-[-1.8px] transition hover:scale-[1.02]">
-              <span>Astral</span><span className="mx-0.5 text-[42px] italic leading-none text-[#0b67f0]">4</span><span>Gamer</span>
+              <span>Astral</span><span className="mx-0.5 text-[42px] italic leading-none text-[#e52b2f]">4</span><span>Gamer</span>
             </a>
             <label className="group flex h-12 flex-1 items-center rounded-lg bg-[#f4f4f5] px-4 text-[#5f6673] transition focus-within:bg-white focus-within:shadow-[0_0_0_2px_rgba(11,103,240,.18),0_12px_30px_rgba(16,24,40,.08)]">
               <Search className="mr-3 h-5 w-5 transition group-focus-within:text-[#0b67f0]" />
@@ -163,16 +163,12 @@ function NexyAccountSlot() {
     <>
       <Show when="signed-out">
         <div className="flex items-center gap-2">
-          <SignInButton mode="modal">
-            <button className="interactive-button h-10 rounded-md border border-[#d7dce5] px-4 text-sm font-black text-[#111827] transition hover:border-[#7c3aed] hover:text-[#6d28d9]" type="button">
-              Connexion
-            </button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <button className="interactive-button h-10 rounded-md bg-[#6d28d9] px-4 text-sm font-black text-white shadow-[0_8px_20px_rgba(109,40,217,.18)] transition hover:bg-[#5b21b6]" type="button">
-              Inscription
-            </button>
-          </SignUpButton>
+          <a href="/connexion" className="interactive-button inline-flex h-10 items-center rounded-md border border-[#d7dce5] px-4 text-sm font-black text-[#111827] transition hover:border-[#e52b2f] hover:text-[#e52b2f]">
+            Connexion
+          </a>
+          <a href="/inscription" className="interactive-button inline-flex h-10 items-center rounded-md bg-[#6d28d9] px-4 text-sm font-black text-white shadow-[0_8px_20px_rgba(109,40,217,.18)] transition hover:bg-[#5b21b6]">
+            Inscription
+          </a>
         </div>
       </Show>
       <Show when="signed-in">
