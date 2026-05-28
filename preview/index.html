@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Astral4Gamer - Preview locale</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #fff; color: #06101f; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      a { text-decoration: none; color: inherit; }
+      .wrap { width: min(1586px, calc(100% - 48px)); margin: 0 auto; }
+      .promo { position: relative; height: 40px; display: flex; align-items: center; justify-content: center; background: #e52b2f; color: #fff; font-size: 14px; font-weight: 650; }
+      .promo a { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+      .promo .close { position: absolute; right: 136px; font-size: 26px; line-height: 1; font-weight: 300; }
+      header { border-bottom: 1px solid #e5e7eb; background: #fff; }
+      .head { height: 88px; display: flex; align-items: center; gap: 40px; }
+      .logo { min-width: 260px; color: #06070a; font-size: 30px; font-weight: 950; letter-spacing: -1.8px; }
+      .logo b { color: #0b67f0; font-size: 30px; font-style: normal; line-height: 0; }
+      .search { height: 48px; flex: 1; display: flex; align-items: center; gap: 12px; border-radius: 8px; background: #f4f4f5; padding: 0 18px; color: #5f6673; transition: .18s; }
+      .search:focus-within { background: #fff; box-shadow: 0 0 0 2px rgba(11,103,240,.18),0 12px 30px rgba(16,24,40,.08); }
+      .search input { width: 100%; border: 0; outline: 0; background: transparent; font-size: 15px; }
+      .icons { min-width: 190px; display: flex; align-items: center; justify-content: flex-end; gap: 24px; color: #000; }
+      .icon-btn { position: relative; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 999px; transition: transform .18s, background .18s; }
+      .icon-btn:hover { transform: translateY(-2px); background: #f4f4f5; }
+      .icon-btn svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2; }
+      .globe span { position: absolute; right: 0; bottom: 0; border-radius: 2px; background: #0957ef; color: #fff; padding: 0 4px; font-size: 10px; font-weight: 900; line-height: 12px; }
+      nav { position: relative; height: 49px; display: flex; align-items: center; gap: 31px; font-size: 16px; }
+      nav a, .navdrop { position: relative; height: 49px; display: flex; align-items: center; color: #111827; transition: color .18s, transform .18s; }
+      nav a::after, .navdrop::after { content: ""; position: absolute; left: 0; bottom: 7px; width: 100%; height: 2px; border-radius: 999px; background: #0b67f0; transform: scaleX(0); transform-origin: left; transition: transform .22s; }
+      nav a:hover, .navdrop:hover { color: #0057d9; transform: translateY(-1px); }
+      nav a:hover::after, .navdrop:hover::after { transform: scaleX(1); }
+      .navdrop { color: #0057d9; gap: 4px; }
+      .chev { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.4; fill: none; transition: transform .18s; }
+      .navitem:hover .chev { transform: rotate(180deg); }
+      .mega { visibility: hidden; opacity: 0; position: absolute; left: 56px; top: 49px; z-index: 20; width: 1024px; border-radius: 0 0 8px 8px; background: #f3f3f3; padding: 24px 16px 14px; box-shadow: 0 12px 32px rgba(16,24,40,.12); transition: .15s; }
+      .navitem:hover .mega { visibility: visible; opacity: 1; }
+      .mega-grid { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 56px; row-gap: 18px; }
+      .mega-grid a { display: flex; align-items: center; gap: 12px; border-radius: 6px; color: #000; font-size: 16px; padding: 5px 7px; transition: transform .18s, box-shadow .18s; }
+      .mega-grid a:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(16,24,40,.1); }
+      .mega-grid img { width: 25px; height: 25px; border-radius: 4px; object-fit: cover; }
+      .showall { margin-top: 22px; border-top: 1px solid #d8d8d8; padding-top: 14px; text-align: center; color: #0057d9; font-weight: 800; }
+      .site-footer { padding: 52px 0 36px; }
+      .contact-card { border-radius: 12px; background: #f6f6f7; padding: 28px 32px; display: grid; grid-template-columns: 1.25fr 1fr; gap: 32px; }
+      .contact-card p { margin: 0 0 10px; color: #374151; font-size: 15px; }
+      .benefits { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; text-align: center; }
+      .benefits div { border-radius: 9px; background: #fff; padding: 16px 10px; transition: transform .18s, box-shadow .18s; }
+      .benefits div:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(16,24,40,.12); }
+      .benefits svg { display: grid; place-items: center; margin: 0 auto 10px; width: 40px; height: 40px; border-radius: 999px; background: #eaf2ff; color: #0b55d9; padding: 9px; }
+      .foot-grid { margin-top: 34px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 36px; color: #6b7280; font-size: 14px; }
+      .foot-grid h3 { color: #000; font-size: 16px; margin: 0 0 16px; }
+      .foot-grid p { margin: 0 0 10px; }
+      .hero { padding-top: 65px; }
+      .slider { position: relative; height: 336px; overflow: hidden; border-radius: 18px; background: #145d3f; color: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+      .slide { position: absolute; inset: 0; opacity: 0; transition: opacity .7s; }
+      .slide.active { opacity: 1; }
+      .slide img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      .slide::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg,rgba(0,0,0,.68),rgba(0,0,0,.2),transparent); z-index: 1; }
+      .slide-content { position: relative; z-index: 2; height: 100%; max-width: 760px; display: flex; flex-direction: column; justify-content: center; padding-left: 156px; }
+      .slide-kicker { margin: 0 0 12px; color: rgba(255,255,255,.8); font-size: 14px; font-weight: 950; letter-spacing: .18em; text-transform: uppercase; }
+      .slide h1 { margin: 0; font-size: 44px; line-height: 1.05; letter-spacing: -.4px; }
+      .slide p.copyline { margin: 16px 0 0; max-width: 470px; color: rgba(255,255,255,.88); font-size: 21px; font-weight: 500; line-height: 28px; }
+      .buy-now { margin-top: 28px; width: 188px; height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 6px; background: white; color: #111827; font-size: 14px; font-weight: 950; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+      button, .buy-now, .promo-card small, .section-title a { transition: transform .18s, box-shadow .18s, color .18s; }
+      button:hover, .buy-now:hover, .promo-card:hover small, .section-title a:hover { transform: translateY(-2px); }
+      .dots { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 4; display: flex; gap: 8px; }
+      .dot { width: 8px; height: 8px; border-radius: 999px; border: 0; background: rgba(255,255,255,.45); transition: .2s; }
+      .dot.active { width: 32px; background: #fff; }
+      .arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 4; color: rgba(255,255,255,.9); font-size: 48px; font-weight: 200; cursor: pointer; }
+      .arrow.left { left: 32px; } .arrow.right { right: 32px; }
+      .categories { padding-top: 48px; }
+      .catbar { overflow: hidden; border-radius: 12px; background: #f6f6f7; padding: 16px 34px; }
+      .catrow { display: grid; grid-template-columns: repeat(13, minmax(0, 1fr)); }
+      .cat { min-width: 0; display: flex; flex-direction: column; align-items: center; border-right: 1px solid #d9d9dc; padding: 0 8px; color: #000; }
+      .cat:last-child { border-right: 0; }
+      .cat-icon { width: 64px; height: 64px; overflow: hidden; display: grid; place-items: center; border-radius: 9px; background: #fff; color: #0b55d9; font-size: 14px; font-weight: 950; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+      .cat-icon img { width: 100%; height: 100%; object-fit: contain; padding: 6px; display: block; }
+      .cat span { margin-top: 9px; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 14px; line-height: 20px; }
+      .products { padding: 35px 0 60px; }
+      .section-title { margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; }
+      .section-title h2 { margin: 0; font-size: 21px; font-weight: 950; }
+      .section-title a { color: #0057d9; font-size: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(8, 1fr); column-gap: 24px; row-gap: 10px; }
+      .product { overflow: hidden; border-radius: 12px; background: #fff; padding: 12px; }
+      .product.active { background: #f3f3f3; }
+      .cover { position: relative; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 8px; background: #f4f4f5; }
+      .cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: .25s; }
+      .cover:hover img { transform: scale(1.05); }
+      .badge { position: absolute; left: 10px; top: 10px; z-index: 2; border-radius: 4px; background: #f04a25; color: #fff; padding: 6px 8px; font-size: 12px; font-weight: 950; }
+      .product h3 { min-height: 42px; margin: 13px 2px 0; color: #004bd6; font-size: 14px; font-weight: 500; line-height: 20px; }
+      .product p { margin: 18px 2px 0; color: #000; text-align: right; font-size: 14px; font-weight: 400; }
+      .product p span { color: #4b5563; }
+      .promos { margin-top: 38px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+      .promo-card { position: relative; height: 218px; overflow: hidden; border-radius: 12px; padding: 28px; transition: transform .2s, box-shadow .2s; }
+      .promo-card:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(16,24,40,.14); }
+      .promo-art { position: absolute; inset: 0 0 0 auto; width: 58%; height: 100%; object-fit: cover; transition: transform .5s; }
+      .promo-card:hover .promo-art { transform: scale(1.05); }
+      .promo-card::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg,#fff,rgba(255,255,255,.8),transparent); }
+      .promo-card h3, .promo-card p, .promo-card small, .promo-logo { position: relative; z-index: 2; }
+      .promo-logo { width: 96px; height: 48px; display: grid; place-items: center; border-radius: 6px; background: rgba(255,255,255,.96); padding: 8px; box-shadow: 0 1px 3px rgba(16,24,40,.1); }
+      .promo-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+      .promo-card h3 { max-width: 205px; margin: 16px 0 0; color: #111827; font-size: 24px; line-height: 26px; font-weight: 950; }
+      .promo-card p { margin: 8px 0 0; color: #1f2937; font-size: 13px; font-weight: 950; text-transform: uppercase; }
+      .promo-card small { position: absolute; left: 28px; bottom: 24px; display: inline-flex; align-items: center; border-radius: 4px; background: #111827; color: #fff; padding: 8px 11px; font-size: 11px; font-weight: 950; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+      .floating { position: fixed; right: 22px; bottom: 22px; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 999px; background: #fff; box-shadow: 0 8px 28px rgba(16,24,40,.16); color: #7c3aed; font-weight: 950; }
+      @media (max-width: 1000px) {
+        .head { gap: 16px; } .logo { min-width: auto; } nav { flex-wrap: wrap; height: auto; padding-bottom: 12px; }
+        .slide-content { padding-left: 56px; padding-right: 36px; } .slide h1 { font-size: 34px; }
+        .catrow { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 16px; }
+        .grid { grid-template-columns: repeat(2, 1fr); } .promos { grid-template-columns: 1fr; } .mega { display: none; }
+      }
+    .live-menu{left:0!important;width:190px!important;background:white!important;padding:8px!important;z-index:120!important}.live-menu a{height:40px!important;display:flex!important;align-items:center!important;gap:8px!important;border-radius:6px!important;padding:0 12px!important;color:rgb(17,24,39)!important;font-size:14px!important;font-weight:800!important}.live-menu a:hover{background:rgb(248,250,252)!important;color:rgb(0,87,217)!important}.red-dot{display:inline-block;width:9px;height:9px;border-radius:999px;background:rgb(239,68,68);box-shadow:0 0 0 4px rgba(239,68,68,.12)}.navitem{position:relative}.navitem:hover .live-menu{visibility:visible!important;opacity:1!important}.live-menu{visibility:hidden;opacity:0;position:absolute;top:49px;transition:.15s}</style>
+  </head>
+  <body>
+    <script>
+      const img = {
+        freefire: "https://media.rawg.io/media/resize/640/-/screenshots/96a/96ab17437e722c8e22240923dfdfcdd0_ftUmkIh.jpg",
+        pubg: "https://media.rawg.io/media/resize/640/-/screenshots/a83/a830c3a3f3f4c9b6cc74924cd42b89a0.jpg",
+        codm: "https://media.rawg.io/media/resize/640/-/screenshots/b59/b59e44204d8af92133ea0b67af45a04c_hS4tgMe.jpg",
+        ml: "https://media.rawg.io/media/resize/640/-/screenshots/ca8/ca8a011899a0743ee717c0a2f056f0af.jpg",
+        fortnite: "https://media.rawg.io/media/resize/640/-/screenshots/c28/c286227823231c426a88aa873cf1b8d6.jpg",
+        brawl: "https://media.rawg.io/media/resize/640/-/screenshots/ffa/ffa1cac1582ab3a81cf77e98435101ac.jpg",
+        valorant: "https://media.rawg.io/media/resize/640/-/screenshots/4e2/4e2b6b1e7f0f3d3d3b5573d0ab826d6e.jpg",
+        genshin: "https://media.rawg.io/media/resize/640/-/screenshots/3b7/3b7f00f2f47ed0f8c3c31ef3dbd4adc6.jpg"
+      };
+      const logo = {
+        freefire: "https://www.logo.wine/a/logo/Garena_Free_Fire/Garena_Free_Fire-Logo.wine.svg",
+        pubg: "https://commons.wikimedia.org/wiki/Special:FilePath/PUBG%20Mobile%20simple%20logo%20black.svg",
+        codm: "https://commons.wikimedia.org/wiki/Special:FilePath/Call%20of%20Duty%20Mobile%202023%20logo.svg",
+        genshin: "https://commons.wikimedia.org/wiki/Special:FilePath/Genshin%20Impact%20wordmark.svg",
+        honkai: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Honkai_Star_Rail_logo.png",
+        ml: "https://commons.wikimedia.org/wiki/Special:FilePath/Mobile%20Legends%20Logo.webp",
+        valorant: "https://commons.wikimedia.org/wiki/Special:FilePath/Valorant%20logo.svg",
+        playstation: "https://commons.wikimedia.org/wiki/Special:FilePath/Playstation%20logo%20colour.svg",
+        exitlag: "https://www.exitlag.com/favicon.ico",
+        gearup: "https://www.gearupbooster.com/favicon.ico"
+      };
+      const categories = [["CODM","Call of Duty Mobile","/product/codm/",logo.codm],["FF","Free Fire","/product/free-fire/",logo.freefire],["PUBG","PUBG Mobile","/product/pubg-mobile/",logo.pubg],["GI","Genshin Impact","/product/genshin-impact/",logo.genshin],["HSR","Honkai: Star Rail","/product/honkai-star-rail/",logo.honkai],["ML","Mobile Legends","/product/mobile-legends/",logo.ml],["LD","Love and Deepspace","/product/love-and-deepspace/",img.fortnite],["HOK","Honor of Kings","/product/honor-of-kings/",img.ml],["ZZZ","Zenless Zone Zero","/product/zenless-zone-zero/",img.valorant],["GB","GearUp Booster","/product/gearup-booster/",logo.gearup],["EX","Exitlag","/product/exitlag/",logo.exitlag],["VAL","Valorant","/product/valorant/",logo.valorant],["PS","PlayStation","/product/playstation/",logo.playstation]];
+      const topup = [["Genesis Crystals Genshin Impact",img.genshin],["Mobile Legends Diamants",img.ml],["Diamants Free Fire",img.freefire],["PUBG Mobile UC",img.pubg],["CP Call of Duty Mobile",img.codm],["Honkai: Star Rail",img.genshin],["Plato",img.fortnite],["Ligue des Legendes",img.valorant],["Golds Blood Strike",img.valorant],["Arena Breakout",img.pubg],["Lords Mobile Diamonds",img.ml],["Zone Zero Sans Couleur",img.valorant],["Wuthering Waves",img.genshin],["Super Sus",img.brawl],["Brawl Stars Gems",img.brawl]];
+      const gift = [["Carte Cadeau Steam",img.fortnite],["Carte cadeau Apple iTunes",img.genshin],["Carte cadeau Google Play",img.brawl],["Carte Cadeau PlayStation Network",img.fortnite],["Carte Cadeau Xbox",img.pubg],["Valorant Points",img.valorant],["Free Fire Gift Card",img.freefire],["Riot Points",img.valorant],["PUBG Mobile Gift Card",img.pubg],["Bigo Live Top Up",img.brawl],["Carte cadeau Twitch",img.ml],["ExitLag",img.valorant]];
+      const slides = [
+        ["Free Fire Diamonds","Recharge tes diamants en quelques secondes et prépare ton prochain rush.","/product/free-fire/","https://wallpapercave.com/wp/wp7536967.jpg"],
+        ["CODM CP Instant","Achète tes CP Call of Duty Mobile et débloque skins, passes et armes premium.","/product/codm/","https://images.wallpapersden.com/image/download/call-of-duty-warzone-mobile-season-3_bmdqbW6UmZqaraWkpJRmbmdlrWZlbWU.jpg"],
+        ["Netflix Gift Card","Recharge ton divertissement avec des cartes cadeaux Netflix prêtes à utiliser.","/product/netflix/","https://m.media-amazon.com/images/I/B1cqB8zl+NS.jpg"],
+        ["PUBG Mobile UC","Obtiens tes UC PUBG Mobile rapidement pour skins, crates et royale pass.","/product/pubg-mobile/","https://images.wallpapersden.com/image/download/pubg-mobile-4k_bG5tbGmUmZqaraWkpJRmbmdlrWZlbWU.jpg"]
+      ];
+      const API_URL = "http://127.0.0.1:8000/api";
+      const promos = [
+        ["Free Fire Diamonds","Bonus instant +8%","/product/free-fire/",logo.freefire,"https://wallpapercave.com/wp/wp7536967.jpg","linear-gradient(90deg,#fff7ed,#fff,#dbeafe)"],
+        ["PUBG Mobile UC","Livraison auto rapide","/product/pubg-mobile/",logo.pubg,"https://images.wallpapersden.com/image/download/pubg-mobile-4k_bG5tbGmUmZqaraWkpJRmbmdlrWZlbWU.jpg","linear-gradient(90deg,#f4f4f5,#fde68a,#111827)"],
+        ["Valorant Points","Code digital sécurisé","/product/valorant/",logo.valorant,img.valorant,"linear-gradient(90deg,#fee2e2,#fff,#fecaca)"],
+        ["Genshin Crystals","Recharge globale","/product/genshin-impact/",logo.genshin,img.genshin,"linear-gradient(90deg,#eff6ff,#fff,#fae8ff)"]
+      ];
+      function menu(items, href) { return `<div class="mega-grid">${items.map(([n,s]) => `<a href="/product/pubg-mobile/"><img src="${s}" alt="">${n}</a>`).join("")}</div><div class="showall"><a href="${href}">Voir tout</a></div>`; }
+    </script>
+
+    <div class="promo">Profitez des offres Astral4Gamer sur les recharges, cartes cadeaux et tournois.<span class="close">×</span></div>
+    <header>
+      <div class="wrap">
+        <div class="head">
+          <a class="logo" href="/">Astral<span style="margin:0 2px;color:#0b67f0;font-size:42px;font-style:italic;line-height:0">4</span>Gamer</a>
+          <label class="search">⌕ <input placeholder="I'm shopping for ..." /></label>
+          <div class="icons">
+            <span class="icon-btn globe"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg><span>FR</span></span>
+            <span class="icon-btn"><svg viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2 3h3l3.6 12.6a2 2 0 0 0 2 1.4h7.7a2 2 0 0 0 1.9-1.4L22 8H6"/></svg></span>
+            <span class="icon-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg></span>
+          </div>
+        </div>
+        <nav>
+          <a href="/">Accueil</a>
+          <div class="navitem"><a class="navdrop" href="/category/top-up/">Game Credits <svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></a><div class="mega" id="top-menu"></div></div>
+          <div class="navitem"><a class="navdrop" href="/category/carte-cadeau/">Gift Cards <svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></a><div class="mega" id="gift-menu"></div></div>
+          <div class="navitem"><a class="navdrop" href="/live/">Live Direct <svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></a><div class="mega live-menu"><a href="/live/"><span class="red-dot"></span>Live</a><a href="/live/passe/">Live Passé</a></div></div>
+          <a href="/tournois/">Tournois</a>
+        </nav>
+      </div>
+    </header>
+    <main>
+      <section class="hero wrap">
+        <div class="slider">
+          <div class="arrow left" id="prev-slide">‹</div><div class="arrow right" id="next-slide">›</div>
+          <div id="slides"></div>
+          <div class="dots" id="dots"></div>
+        </div>
+      </section>
+      <section class="categories wrap"><div class="catbar"><div class="catrow" id="catrow"></div></div></section>
+      <section class="products wrap">
+        <div class="section-title"><h2>Produits les Plus Vendus</h2><a href="#">Voir tout ›</a></div>
+        <div class="grid" id="product-grid"></div>
+        <div class="promos" id="promos"></div>
+      </section>
+    </main>
+    <footer class="site-footer wrap">
+      <div class="contact-card">
+        <div><p><b>Entreprise:</b> Astral4Gamer</p><p><b>Téléphone / WhatsApp:</b> +33 6 88 63 92 94</p><p><b>YouTube:</b> @astral4gamer</p><p><b>Support:</b> commandes, recharges, cartes cadeaux et suivi API.</p></div>
+        <div class="benefits"><div><svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" fill="none" stroke="currentColor" stroke-width="2"/></svg>Livraison instantanée</div><div><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9 12 2 2 4-5" fill="none" stroke="currentColor" stroke-width="2"/></svg>Paiement sécurisé</div><div><svg viewBox="0 0 24 24"><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7M2 7h20v5H2zM12 22V7" fill="none" stroke="currentColor" stroke-width="2"/></svg>Prix compétitifs</div><div><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 16 0v4a2 2 0 0 1-2 2h-2v-6h4M4 12v4a2 2 0 0 0 2 2h2v-6H4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 20h6" stroke="currentColor" stroke-width="2"/></svg>Support client</div></div>
+      </div>
+      <div class="foot-grid"><div><h3>Astral4Gamer</h3><p>À propos</p><p>Conditions</p><p>Confidentialité</p><p>API revendeur</p></div><div><h3>Services client</h3><p>Profil</p><p>Wallet</p><p>Commandes</p><p>Contact</p></div><div><h3>Top produits</h3><p>CP Call of Duty Mobile</p><p>Diamants Free Fire</p><p>PUBG Mobile UC</p><p>Netflix Gift Card</p></div><div><h3>Guide</h3><p>Achat top up</p><p>Achat cartes cadeaux</p><p>Livraison instantanée</p><p>FAQ</p></div></div>
+      <h2 style="margin-top:42px">Astral4Gamer - Boutique gaming et cartes cadeaux</h2><p style="color:#6b7280;line-height:1.7">Astral4Gamer propose des recharges rapides, des cartes cadeaux digitales et une expérience d'achat claire pour les joueurs.</p>
+    </footer><div class="floating">A4</div>
+    <script>
+      document.getElementById("top-menu").innerHTML = menu(topup, "/category/top-up/");
+      document.getElementById("gift-menu").innerHTML = menu(gift, "/category/carte-cadeau/");
+      let activeSlide = 0;
+      const slidesEl = document.getElementById("slides");
+      const dotsEl = document.getElementById("dots");
+      slidesEl.innerHTML = slides.map(([title,text,href,image], i) => `<div class="slide ${i===0 ? "active" : ""}"><img src="${image}" alt="${title}"><div class="slide-content"><p class="slide-kicker">Recharge officielle Astral4Gamer</p><h1>${title}</h1><p class="copyline">${text}</p><a class="buy-now" href="${href}">Acheter maintenant ›</a></div></div>`).join("");
+      dotsEl.innerHTML = slides.map((s, i) => `<button class="dot ${i===0 ? "active" : ""}" data-slide="${i}"></button>`).join("");
+      function showSlide(index) {
+        activeSlide = (index + slides.length) % slides.length;
+        document.querySelectorAll(".slide").forEach((el, i) => el.classList.toggle("active", i === activeSlide));
+        document.querySelectorAll(".dot").forEach((el, i) => el.classList.toggle("active", i === activeSlide));
+      }
+      document.getElementById("prev-slide").onclick = () => showSlide(activeSlide - 1);
+      document.getElementById("next-slide").onclick = () => showSlide(activeSlide + 1);
+      document.querySelectorAll(".dot").forEach((dot) => dot.onclick = () => showSlide(Number(dot.dataset.slide)));
+      setInterval(() => showSlide(activeSlide + 1), 2000);
+      function categoryAbbr(name) {
+        return name.split(/\s+/).map((word) => word[0]).join("").slice(0, 4).toUpperCase();
+      }
+      function renderCategories(items) {
+        document.getElementById("catrow").innerHTML = items.slice(0, 13).map(([abbr,n,href,image]) => `<a class="cat" href="${href}"><div class="cat-icon">${image ? `<img src="${image}" alt="${n}">` : abbr}</div><span>${n}</span></a>`).join("");
+      }
+      renderCategories(categories);
+      const productGrid = document.getElementById("product-grid");
+      productGrid.innerHTML = `<div style="grid-column:1/-1;border-radius:10px;background:#f6f6f7;padding:20px;color:#4b5563">Chargement du catalogue fournisseur...</div>`;
+      fetch(`${API_URL}/products?per_page=32`, { headers: { Accept: "application/json" } })
+        .then((response) => response.json())
+        .then((payload) => {
+          const products = payload.data || [];
+          if (!products.length) {
+            productGrid.innerHTML = `<a href="/product/pubg-mobile/" class="product active"><div class="cover"><span class="badge">API</span><img src="${img.pubg}" alt="PUBG Mobile UC"></div><h3>PUBG Mobile UC</h3><p>0.81 EUR</p></a><div style="grid-column:span 7;border-radius:10px;background:#fff7ed;padding:20px;color:#9a3412">Catalogue fournisseur en attente sur cette preview. Clique sur PUBG pour voir la fiche produit automatisée.</div>`;
+            return;
+          }
+          const games = new Map();
+          products.forEach((product) => {
+            const name = product.game || product.name;
+            if (!games.has(name)) games.set(name, product);
+          });
+          renderCategories(Array.from(games.entries()).map(([name,product]) => [categoryAbbr(name), name, `/product/${product.id}/`, product.image_url || img.pubg]));
+          productGrid.innerHTML = products.map((p, i) => `<a href="/product/pubg-mobile/" class="product ${i === 3 ? "active" : ""}"><div class="cover">${p.variation_id ? `<span class="badge">API</span>` : ""}<img src="${p.image_url || img.pubg}" alt="${p.name}"></div><h3>${p.name}</h3><p>${p.price ? `${p.price} ${p.currency}` : "Prix API"}</p></a>`).join("");
+        })
+        .catch(() => {
+          productGrid.innerHTML = `<a href="/product/pubg-mobile/" class="product active"><div class="cover"><span class="badge">API</span><img src="${img.pubg}" alt="PUBG Mobile UC"></div><h3>PUBG Mobile UC</h3><p>0.81 EUR</p></a><div style="grid-column:span 7;border-radius:10px;background:#fef2f2;padding:20px;color:#991b1b">Backend Laravel non lancé ici. Clique sur PUBG pour voir la fiche produit automatisée.</div>`;
+        });
+      document.getElementById("promos").innerHTML = promos.map(([t,sub,href,logoSrc,art,bg]) => `<a class="promo-card" href="${href}" style="background:${bg}"><img class="promo-art" src="${art}" alt="${t}"><span class="promo-logo"><img src="${logoSrc}" alt="${t} logo"></span><h3>${t}</h3><p>${sub}</p><small>Acheter ›</small></a>`).join("");
+    </script>
+  </body>
+</html>

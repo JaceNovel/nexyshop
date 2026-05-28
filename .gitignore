@@ -1,0 +1,13 @@
+node_modules/
+.tools/
+vendor/
+.next/
+.env
+.env.*
+!.env.example
+storage/logs/*.log
+bootstrap/cache/*.php
+dist/
+coverage/
+.DS_Store
+*.tsbuildinfo
