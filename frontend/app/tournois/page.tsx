@@ -18,6 +18,7 @@ type TournamentCard = Tournament & {
   startsLabel: string;
   registrationEnd: string;
   badge?: string;
+  fundingGuarantee?: "astral" | "self";
 };
 
 const fallbackTournaments: TournamentCard[] = [
@@ -36,7 +37,8 @@ const fallbackTournaments: TournamentCard[] = [
     rewardExtra: "+ Trophees",
     startsLabel: "25 Mai 2024 16:00",
     registrationEnd: "25 Mai 2024 - 15:30",
-    badge: "OFFICIEL"
+    badge: "OFFICIEL",
+    fundingGuarantee: "astral"
   },
   {
     id: 13,
@@ -53,7 +55,8 @@ const fallbackTournaments: TournamentCard[] = [
     rewardExtra: "+ Trophees",
     startsLabel: "26 Mai 2024 18:00",
     registrationEnd: "26 Mai 2024 - 17:30",
-    badge: "GUILD WARS"
+    badge: "GUILD WARS",
+    fundingGuarantee: "self"
   },
   {
     id: 14,
@@ -70,7 +73,8 @@ const fallbackTournaments: TournamentCard[] = [
     rewardExtra: "+ Cartes cadeaux",
     startsLabel: "27 Mai 2024 14:00",
     registrationEnd: "27 Mai 2024 - 13:30",
-    badge: "SOLO"
+    badge: "SOLO",
+    fundingGuarantee: "astral"
   },
   {
     id: 15,
@@ -87,7 +91,8 @@ const fallbackTournaments: TournamentCard[] = [
     rewardExtra: "+ Bonus",
     startsLabel: "28 Mai 2024 20:00",
     registrationEnd: "28 Mai 2024 - 19:30",
-    badge: "DUO"
+    badge: "DUO",
+    fundingGuarantee: "self"
   }
 ];
 
@@ -154,7 +159,8 @@ function normalizeTournament(tournament: Tournament, index: number): TournamentC
     rewardExtra: fallback.rewardExtra,
     startsLabel: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(tournament.starts_at || fallback.starts_at)),
     registrationEnd: fallback.registrationEnd,
-    badge: fallback.badge
+    badge: fallback.badge,
+    fundingGuarantee: fallback.fundingGuarantee
   };
 }
 
@@ -335,6 +341,9 @@ function TournamentRow({ tournament }: { tournament: TournamentCard }) {
           <h2 className="text-sm font-black uppercase">{tournament.title}</h2>
           <Badge tone="purple">À VENIR</Badge>
           {tournament.badge ? <Badge tone={tournament.badge === "GUILD WARS" ? "gold" : "blue"}>{tournament.badge}</Badge> : null}
+          <Badge tone={tournament.fundingGuarantee === "astral" ? "red" : "gray"}>
+            {tournament.fundingGuarantee === "astral" ? "ASTRAL4GAMER GARANTIT CE TOURNOI" : "NON GARANTIE"}
+          </Badge>
           {tournament.badge === "OFFICIEL" ? <CheckCircle2 className="h-3.5 w-3.5 text-[#2563eb]" /> : null}
         </div>
 
@@ -366,11 +375,13 @@ function TournamentRow({ tournament }: { tournament: TournamentCard }) {
   );
 }
 
-function Badge({ children, tone }: { children: ReactNode; tone: "purple" | "blue" | "gold" }) {
+function Badge({ children, tone }: { children: ReactNode; tone: "purple" | "blue" | "gold" | "red" | "gray" }) {
   const classes = {
     purple: "bg-[#7c19f4] text-white",
     blue: "bg-[#2f80ed] text-white",
-    gold: "bg-[#f4a11a] text-white"
+    gold: "bg-[#f4a11a] text-white",
+    red: "bg-[#e52b2f] text-white",
+    gray: "bg-[#f2f4f7] text-[#667085]"
   };
 
   return <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${classes[tone]}`}>{children}</span>;

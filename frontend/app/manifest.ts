@@ -7,10 +7,15 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Boutique, tournois, live et communauté esport.",
     start_url: "/",
     display: "standalone",
-    background_color: "#05050a",
-    theme_color: "#9d4edd",
+    background_color: "#ffffff",
+    theme_color: "#e52b2f",
     icons: [
-      { src: "/icon.svg", sizes: "any", type: "image/svg+xml" }
+      {
+        src: "/favicon.svg",
+        sizes: "any",
+        type: "image/svg+xml",
+        purpose: "any"
+      }
     ]
   };
 }

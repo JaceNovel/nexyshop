@@ -223,13 +223,11 @@ export default function Home() {
           <div className="grid grid-cols-13">
             {displayCategories.slice(0, 13).map(({ abbr, label, image, href }) => (
               <a key={label} className="soft-pop flex min-w-0 flex-col items-center justify-start border-r border-[#d9d9dc] px-2 last:border-r-0" href={href}>
-                <div className="grid h-16 w-16 place-items-center overflow-hidden rounded-lg bg-white shadow-sm">
-                  {image ? (
-                    <img src={image} alt={label} className="h-full w-full object-contain p-1.5" />
-                  ) : (
-                    <span className="text-sm font-black text-[#0b55d9]">{abbr}</span>
-                  )}
-                </div>
+                {image ? (
+                  <img src={image} alt={label} className="h-16 w-16 rounded-xl object-contain" />
+                ) : (
+                  <span className="grid h-16 w-16 place-items-center rounded-xl bg-[#eaf2ff] text-sm font-black text-[#0b55d9]">{abbr}</span>
+                )}
                 <span className="mt-2 block w-full truncate text-center text-[14px] leading-5 text-black">{label}</span>
               </a>
             ))}

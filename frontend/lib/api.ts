@@ -156,6 +156,99 @@ export async function verifyGameUid(game: string, uid: string) {
   return response.json() as Promise<{ nickname: string; avatar?: string; uid: string }>;
 }
 
+export type FreeFireProfile = {
+  uid: string;
+  region: string;
+  nickname: string;
+  level?: number | null;
+  likes?: number | null;
+  br_rank_points?: number | null;
+  cs_rank_points?: number | null;
+  rank?: { br?: number | null; cs?: number | null; season?: number | null };
+  guild?: Record<string, unknown> | null;
+  stats?: Record<string, unknown> | null;
+  outfit_url?: string | null;
+  banner_url?: string | null;
+  account?: Record<string, unknown> | null;
+  usage?: Record<string, unknown> | null;
+};
+
+export async function validateFreeFireUid(uid: string, region: string) {
+  const response = await fetchWithLocalFallback(`${API_URL}/api/freefire/validate`, "/api/freefire/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ uid, region })
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message ?? "ID incorrect");
+  }
+
+  return response.json() as Promise<{ uid: string; region: string; nickname: string; level?: number | null; verified: boolean }>;
+}
+
+export async function getFreeFireProfile(uid: string, region: string) {
+  const response = await fetchWithLocalFallback(`${API_URL}/api/freefire/profile`, "/api/freefire/profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ uid, region })
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message ?? "Profil Free Fire indisponible");
+  }
+
+  return response.json() as Promise<FreeFireProfile>;
+}
+
+export async function getFreeFireLikesQuote() {
+  const response = await fetchWithLocalFallback(`${API_URL}/api/freefire/likes/quote`, "/api/freefire/likes/quote", {
+    headers: { Accept: "application/json" },
+    credentials: "include"
+  });
+
+  if (!response.ok) {
+    throw new Error("Offre likes indisponible");
+  }
+
+  return response.json() as Promise<{ likes: number; max_per_day: number; amount: number; currency: string; message: string }>;
+}
+
+export async function requestFreeFireLikes(uid: string, region: string, likes = 100) {
+  const response = await fetchWithLocalFallback(`${API_URL}/api/freefire/likes/request`, "/api/freefire/likes/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ uid, region, likes })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.message ?? "Commande de likes impossible");
+  }
+
+  return payload as {
+    status: string;
+    quote?: { likes: number; max_per_day: number; amount: number; currency: string; message: string };
+    uid: string;
+    region: string;
+    message: string;
+  };
+}
+
+async function fetchWithLocalFallback(primaryUrl: string, localUrl: string, init?: RequestInit) {
+  try {
+    return await fetch(primaryUrl, init);
+  } catch {
+    return fetch(localUrl, init);
+  }
+}
+
 export type ReplayMoment = {
   id: number;
   replay_id: number;
