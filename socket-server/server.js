@@ -55,6 +55,6 @@ setInterval(() => {
   });
 }, 5000);
 
-server.listen(process.env.PORT ?? 4000, () => {
+server.listen(process.env.PORT ?? 4000, "127.0.0.1", () => {
   console.log("NEXY socket server listening");
 });

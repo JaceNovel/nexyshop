@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { Facebook, MessageCircle, Send } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { getBlogPost } from "@/lib/api";
@@ -31,7 +32,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function BlogDetailPage({ params }: Props) {
   const { slug } = await params;
-  const { data: post } = await getBlogPost(slug);
+  const post = await getBlogPost(slug)
+    .then((response) => response.data)
+    .catch(() => null);
+
+  if (!post) {
+    notFound();
+  }
+
   const shareUrl = `/blog/${post.slug}`;
 
   return (

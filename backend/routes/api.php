@@ -11,12 +11,14 @@ use App\Http\Controllers\Api\LiveController;
 use App\Http\Controllers\Api\MissionController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PlayerController;
+use App\Http\Controllers\Api\PublicProfileController;
 use App\Http\Controllers\Api\ReplayController;
 use App\Http\Controllers\Api\ShopController;
 use App\Http\Controllers\Api\TournamentController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['api', 'throttle:api'])->group(function () {
+    Route::get('/public/profiles/{username}', [PublicProfileController::class, 'show']);
     Route::get('/health', fn () => ['status' => 'ok', 'service' => 'nexy-api']);
     Route::get('/home', [ShopController::class, 'home']);
     Route::get('/products', [ShopController::class, 'products']);

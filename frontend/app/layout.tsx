@@ -60,6 +60,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ClerkProvider>
           <Providers>{children}</Providers>
         </ClerkProvider>
+        <div id="clerk-captcha" className="flex justify-center" />
       </body>
     </html>
   );

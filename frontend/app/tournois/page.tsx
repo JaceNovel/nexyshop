@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { CalendarDays, CheckCircle2, ChevronDown, Diamond, Gift, Plus, Radio, Shield, Trophy, Users } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, Gift, Plus, Radio, Shield, Trophy, Users } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
-import { getLeaderboards, getTournaments, type Tournament } from "@/lib/api";
+import { getTournaments, type Tournament } from "@/lib/api";
+import { BestTeamsLeaderboard, TournoisTabs } from "./tournois-client";
+import { MineTournaments } from "./mine-tournaments-client";
 
 export const metadata: Metadata = {
   title: "Tournois - Astral4Gamer",
@@ -98,25 +100,29 @@ const fallbackTournaments: TournamentCard[] = [
 
 const filterBlocks = [
   {
+    filterKey: "game",
     title: "JEU",
     items: ["Free Fire", "PUBG Mobile", "Mobile Legends", "Call of Duty Mobile", "Valorant", "Clash Squad"],
-    active: "Free Fire",
+    defaultValue: "Free Fire",
     more: true
   },
   {
+    filterKey: "type",
     title: "TYPE",
     items: ["BR - Squad", "BR - Duo", "BR - Solo", "Clash Squad", "Guild Wars"],
-    active: "BR - Squad"
+    defaultValue: "BR - Squad"
   },
   {
+    filterKey: "status",
     title: "STATUT",
     items: ["A venir", "En cours", "Inscription ouverte"],
-    active: "A venir"
+    defaultValue: "A venir"
   },
   {
+    filterKey: "price",
     title: "PRIX",
     items: ["Tous", "Gratuit", "Payant"],
-    active: "Tous"
+    defaultValue: "Tous"
   }
 ];
 
@@ -164,15 +170,29 @@ function normalizeTournament(tournament: Tournament, index: number): TournamentC
   };
 }
 
-export default async function TournoisPage() {
+export default async function TournoisPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const tabParam = (() => {
+    const raw = params?.tab;
+    return Array.isArray(raw) ? raw[0] : raw;
+  })();
+  const mineParam = (() => {
+    const raw = params?.mine;
+    return Array.isArray(raw) ? raw[0] : raw;
+  })();
+  const selectedFilters = Object.fromEntries(
+    filterBlocks.map((block) => {
+      const raw = params?.[block.filterKey];
+      const value = Array.isArray(raw) ? raw[0] : raw;
+      return [block.filterKey, (typeof value === "string" && value ? value : block.defaultValue)];
+    })
+  ) as Record<string, string>;
+
   let tournaments = fallbackTournaments;
-  let leaderboard = [
-    ["TM-MAFIA", 122, "up"],
-    ["TEAM SHADOW", 98, "up"],
-    ["PRIME ELITE", 85, "down"],
-    ["DRAGON FORCE", 74, "same"],
-    ["ONLY GODS", 60, "up"]
-  ] as Array<[string, number, "up" | "down" | "same"]>;
 
   try {
     const payload = await getTournaments();
@@ -181,34 +201,53 @@ export default async function TournoisPage() {
     tournaments = fallbackTournaments;
   }
 
-  try {
-    const data = await getLeaderboards();
-    if (data.top_players?.length) {
-      leaderboard = data.top_players.slice(0, 5).map((player, index) => [player.name, player.points, index === 2 ? "down" : index === 3 ? "same" : "up"]);
-    }
-  } catch {
-    leaderboard = leaderboard;
-  }
+  const filteredTournaments = tournaments.filter((tournament) => {
+    const game = selectedFilters.game;
+    const type = selectedFilters.type;
+    const status = selectedFilters.status;
+    const price = selectedFilters.price;
+
+    if (game === "Clash Squad" && !tournament.mode.toLowerCase().includes("clash")) return false;
+    if (game !== "Free Fire" && game !== "Clash Squad") return false;
+
+    if (type && type !== tournament.mode) return false;
+
+    const normalizedStatus = String(tournament.status ?? "").toLowerCase();
+    const derivedStatus =
+      normalizedStatus.includes("live") || normalizedStatus.includes("ongoing") ? "En cours"
+        : normalizedStatus.includes("open") ? "Inscription ouverte"
+          : "A venir";
+    if (status && derivedStatus !== status) return false;
+
+    if (price === "Gratuit" && tournament.fee !== "GRATUITE") return false;
+    if (price === "Payant" && tournament.fee === "GRATUITE") return false;
+
+    return true;
+  });
+
+  const activeFiltersCount = filterBlocks.reduce((count, block) => (selectedFilters[block.filterKey] !== block.defaultValue ? count + 1 : count), 0);
 
   return (
     <main className="min-h-screen bg-[#fbfbfd] text-[#111827]">
       <SiteHeader />
 
-      <section className="grid w-full gap-4 px-2 py-4 sm:px-3 2xl:px-4 xl:grid-cols-[220px_minmax(0,1fr)_300px]">
-        <aside className="hidden xl:block">
-          <div className="rounded-lg border border-[#ececf3] bg-white p-3 shadow-[0_8px_22px_rgba(16,24,40,.04)]">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-xs font-black">FILTRES</h2>
-              <button className="text-[10px] font-black text-[#6d28d9]">Réinitialiser</button>
-            </div>
-            <div className="space-y-3">
+	      <section className="grid w-full gap-4 px-2 py-4 sm:px-3 2xl:px-4 xl:grid-cols-[220px_minmax(0,1fr)_300px]">
+	        <aside className="hidden xl:block">
+	          <div className="rounded-lg border border-[#ececf3] bg-white p-3 shadow-[0_8px_22px_rgba(16,24,40,.04)]">
+	            <div className="mb-3 flex items-center justify-between">
+	              <h2 className="text-xs font-black">FILTRES</h2>
+	              <a href="/tournois" className="text-[10px] font-black text-[#6d28d9]">Réinitialiser</a>
+	            </div>
+	            <div className="space-y-3">
               {filterBlocks.map((block) => (
-                <FilterBlock key={block.title} {...block} />
+                <FilterBlock key={block.title} {...block} selected={selectedFilters[block.filterKey]} selectedFilters={selectedFilters} />
               ))}
-            </div>
-            <button className="mt-3 h-9 w-full rounded-md bg-[#7c19f4] text-xs font-black text-white shadow-[0_10px_20px_rgba(124,25,244,.2)]">FILTRER (2)</button>
-          </div>
-        </aside>
+	            </div>
+	            <a href="#tournaments" className="mt-3 flex h-9 w-full items-center justify-center rounded-md bg-[#7c19f4] text-xs font-black text-white shadow-[0_10px_20px_rgba(124,25,244,.2)]">
+	              FILTRER ({activeFiltersCount})
+	            </a>
+	          </div>
+	        </aside>
 
         <section className="min-w-0">
           <header className="mb-4 flex flex-col gap-3 border-b border-[#ececf3] bg-white px-4 py-4 md:flex-row md:items-start md:justify-between">
@@ -221,21 +260,24 @@ export default async function TournoisPage() {
             </a>
           </header>
 
-          <nav className="mb-4 flex overflow-x-auto rounded-md border border-[#ececf3] bg-white px-3 text-xs font-black shadow-[0_8px_22px_rgba(16,24,40,.04)]">
-            {["TOUS", "À VENIR", "EN COURS", "INSCRIPTION OUVERTE", "TERMINÉS", "MES TOURNOIS"].map((tab, index) => (
-              <a key={tab} href="/tournois" className={`relative flex h-10 shrink-0 items-center px-4 ${index === 0 ? "text-[#7c19f4]" : "text-[#111827]"}`}>
-                {tab}
-                {index === 0 ? <span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-[#7c19f4]" /> : null}
-              </a>
-            ))}
-          </nav>
+          <TournoisTabs initialTab={typeof tabParam === "string" ? tabParam : undefined} basePath="/tournois" />
 
-          <h2 className="mb-3 text-xs font-black uppercase">TOURNOIS À VENIR</h2>
-          <div className="space-y-3">
-            {tournaments.map((tournament) => (
-              <TournamentRow key={tournament.id} tournament={tournament} />
-            ))}
-          </div>
+          <h2 id="tournaments" className="mb-3 scroll-mt-24 text-xs font-black uppercase">
+            {mineParam === "1" ? "MES TOURNOIS" : "TOURNOIS À VENIR"}
+          </h2>
+          {mineParam === "1" ? (
+            <MineTournaments />
+          ) : (
+            <div className="space-y-3">
+              {filteredTournaments.length ? (
+                filteredTournaments.map((tournament) => <TournamentRow key={tournament.id} tournament={tournament} />)
+              ) : (
+                <div className="rounded-md border border-[#ececf3] bg-white p-6 text-center text-sm font-semibold text-[#6b7280]">
+                  Aucun tournoi ne correspond à ces filtres.
+                </div>
+              )}
+            </div>
+          )}
 
           <button className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-b-md bg-[#f3efff] text-xs font-black text-[#7c19f4]">
             CHARGER PLUS
@@ -267,17 +309,7 @@ export default async function TournoisPage() {
               </span>
             }
           >
-            <div className="space-y-2">
-              {leaderboard.map(([name, points, trend], index) => (
-                <div key={name} className="grid grid-cols-[18px_20px_1fr_auto_16px] items-center gap-2 text-xs">
-                  <b>{index + 1}</b>
-                  <span className="grid h-5 w-5 place-items-center rounded-full bg-[#f5f3ff] text-[10px]">🏆</span>
-                  <b className="line-clamp-1">{name}</b>
-                  <span className="font-black">{points} PTS</span>
-                  <span className={trend === "down" ? "text-red-500" : trend === "up" ? "text-emerald-500" : "text-[#9ca3af]"}>{trend === "down" ? "↓" : trend === "up" ? "↑" : "-"}</span>
-                </div>
-              ))}
-            </div>
+            <BestTeamsLeaderboard />
           </Panel>
 
           <section className="overflow-hidden rounded-lg bg-[#18063b] shadow-[0_12px_28px_rgba(24,6,59,.18)]">
@@ -305,7 +337,27 @@ export default async function TournoisPage() {
   );
 }
 
-function FilterBlock({ title, items, active, more }: { title: string; items: string[]; active: string; more?: boolean }) {
+function FilterBlock({
+  title,
+  items,
+  selected,
+  filterKey,
+  selectedFilters,
+  more
+}: {
+  title: string;
+  items: string[];
+  selected: string;
+  filterKey: string;
+  selectedFilters: Record<string, string>;
+  more?: boolean;
+}) {
+  function hrefFor(value: string) {
+    const params = new URLSearchParams(selectedFilters);
+    params.set(filterKey, value);
+    return `/tournois?${params.toString()}`;
+  }
+
   return (
     <section className="rounded-md border border-[#ececf3] bg-white p-3">
       <h3 className="mb-3 flex items-center justify-between text-xs font-black">
@@ -314,15 +366,15 @@ function FilterBlock({ title, items, active, more }: { title: string; items: str
       </h3>
       <div className="space-y-2.5">
         {items.map((item) => (
-          <label key={item} className="flex items-center gap-2.5 text-xs font-medium">
-            <span className={`grid h-3.5 w-3.5 place-items-center rounded-full border ${item === active ? "border-[#7c19f4] bg-[#7c19f4]" : "border-[#d1d5db]"}`}>
-              {item === active ? <CheckCircle2 className="h-2.5 w-2.5 text-white" /> : null}
+          <a key={item} href={hrefFor(item)} className="flex items-center gap-2.5 text-xs font-medium">
+            <span className={`grid h-3.5 w-3.5 place-items-center rounded-full border ${item === selected ? "border-[#7c19f4] bg-[#7c19f4]" : "border-[#d1d5db]"}`}>
+              {item === selected ? <CheckCircle2 className="h-2.5 w-2.5 text-white" /> : null}
             </span>
-            <span className={item === active ? "text-[#7c19f4]" : "text-[#111827]"}>{item}</span>
-          </label>
+            <span className={item === selected ? "text-[#7c19f4]" : "text-[#111827]"}>{item}</span>
+          </a>
         ))}
       </div>
-      {more ? <button className="mt-3 text-xs font-black text-[#7c19f4]">Voir plus⌄</button> : null}
+      {more ? <a href={`/tournois?${new URLSearchParams(selectedFilters).toString()}`} className="mt-3 inline-flex text-xs font-black text-[#7c19f4]">Voir plus⌄</a> : null}
     </section>
   );
 }
@@ -356,7 +408,10 @@ function TournamentRow({ tournament }: { tournament: TournamentCard }) {
         <div className="mt-4 rounded-md bg-[#fafafa] p-3">
           <p className="text-[10px] font-black uppercase text-[#4b5563]">RÉCOMPENSE</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 text-lg font-black"><Diamond className="h-4 w-4 fill-[#0ea5e9] text-[#0ea5e9]" /> {tournament.rewardLabel}</span>
+            <span className="inline-flex items-center gap-1.5 text-lg font-black">
+              <img src="/icons/freefire-diamond.svg" alt="" className="h-4 w-4" />
+              {tournament.rewardLabel}
+            </span>
             <span className="inline-flex items-center gap-1.5 text-xs font-black"><Gift className="h-4 w-4 text-[#8b5a2b]" /> {tournament.rewardExtra}</span>
           </div>
         </div>

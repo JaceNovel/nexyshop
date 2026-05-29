@@ -299,6 +299,7 @@ export function SiteHeader() {
           <NavDropdown href="/category/carte-cadeau" label="Gift Cards" items={giftItems} />
 	          <LiveDropdown />
 	          <NavLink href="/tournois">Tournois</NavLink>
+	          <NavLink href="/profil-public">Profil public</NavLink>
 	          <NavLink href="/jeux-avenir">Jeux à venir</NavLink>
 	          <NavLink href="/blog">Blog</NavLink>
         </nav>

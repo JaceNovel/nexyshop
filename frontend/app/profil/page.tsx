@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
-import { Activity, CalendarDays, CheckCircle2, Copy, Crown, Edit3, Eye, Gamepad2, Gift, Globe2, Heart, LogOut, Medal, MoreHorizontal, Play, Shield, Share2, Star, Swords, Trophy, Users, Zap } from "lucide-react";
+import { Activity, CalendarDays, CheckCircle2, Crown, Edit3, Eye, Gamepad2, Gift, Globe2, Heart, LogOut, Medal, MoreHorizontal, Play, Shield, Star, Swords, Trophy, Users, Zap } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { disconnectGoogle, getFreeFireProfile, getGoogleProfile, requestFreeFireLikes } from "@/lib/api";
 import { GoogleAuthButton } from "@/components/google-auth-button";
+import { CountryFlag } from "@/components/country-flag";
+import { CopyToClipboardButton, ShareProfileButton } from "@/components/share-profile-button";
 
 type ProfileState = Awaited<ReturnType<typeof getGoogleProfile>>;
 type LocalSession = { token: string | null; name: string; avatar: string | null; email: string | null };
@@ -191,12 +193,26 @@ export default function ProfilePage() {
   const csRankPoints = numberFrom(freeFireProfile?.cs_rank_points) ?? 0;
   const brRank = getFreeFireRank(rankPoints);
   const csRank = getFreeFireRankByCode(numberFrom(freeFireProfile?.rank?.cs), csRankPoints);
-  const email = session.email ?? profile?.google?.email ?? "Compte Google connecté";
+  const email = session.email ?? profile?.google?.email ?? "Email non disponible";
+  const game = (user?.unsafeMetadata as Record<string, unknown> | null | undefined)?.game;
+  const country = (user?.unsafeMetadata as Record<string, unknown> | null | undefined)?.country;
+  const shareUsername =
+    user?.username ??
+    (typeof email === "string" && email.includes("@") ? email.split("@")[0] : null) ??
+    name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const accountInfo = freeFireProfile?.account?.AccountInfo;
   const profileInfo = freeFireProfile?.account?.AccountProfileInfo;
   const guildInfo = freeFireProfile?.guild ?? freeFireProfile?.account?.GuildInfo;
   const socialInfo = freeFireProfile?.account?.socialinfo;
   const creditScore = valueFrom(freeFireProfile?.account?.creditScoreInfo, "creditScore");
+  const isFreeFire =
+    typeof game === "string" ? ["free fire", "freefire", "ff"].includes(game.trim().toLowerCase()) : true;
+  const freeFireCreatedAt = isFreeFire ? valueFrom(accountInfo, "AccountCreateTime") : null;
+  const memberSince = freeFireCreatedAt
+    ? `Compte Free Fire créé le ${formatUnixDateTime(freeFireCreatedAt)}`
+    : user?.createdAt
+      ? `Membre depuis ${new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(new Date(user.createdAt))}`
+      : null;
   const equippedOutfit = Array.isArray(profileInfo?.EquippedOutfit) ? profileInfo.EquippedOutfit.length : null;
   const equippedSkills = Array.isArray(profileInfo?.EquippedSkills) ? profileInfo.EquippedSkills.length / 4 : null;
   const realStats = [
@@ -252,13 +268,27 @@ export default function ProfilePage() {
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-sm font-bold text-white/78">
                   <span className="rounded border border-[#e52b2f] bg-[#e52b2f] px-3 py-1 text-xs font-black text-white">JOUEUR PRO</span>
                   <span>ID: {playerUid}</span>
-                  <Copy className="h-4 w-4" />
+                  <CopyToClipboardButton value={playerUid} className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-white/5 text-white/80 transition hover:bg-white/10" label="Copier l’ID" />
                 </div>
-                <p className="mt-4 text-sm font-semibold text-white/78">Joueur Free Fire • Créateur de contenu • Compétiteur</p>
-                <p className="mt-2 flex flex-wrap gap-4 text-sm text-white/70"><span>📍 Lomé, Togo</span><span>📅 Membre depuis mars 2023</span><span>{email}</span></p>
+                <p className="mt-4 text-sm font-semibold text-white/78">
+                  Joueur {typeof game === "string" && game.trim() ? game.trim() : "Free Fire"} • Créateur de contenu • Compétiteur
+                </p>
+                <p className="mt-2 flex flex-wrap items-center gap-4 text-sm text-white/70">
+                  {typeof country === "string" && country.trim() ? (
+                    <span className="inline-flex items-center gap-2">
+                      <CountryFlag code={country} label={country} />
+                      <span className="uppercase">{country}</span>
+                    </span>
+                  ) : null}
+                  {memberSince ? <span>📅 {memberSince}</span> : null}
+                  <span>{email}</span>
+                </p>
                 <div className="mt-6 flex flex-wrap gap-3">
 	                  <button className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#e52b2f] px-5 text-sm font-black text-white"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
-	                  <button className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-5 text-sm font-black text-white backdrop-blur transition hover:bg-white/15"><Share2 className="h-4 w-4" /> PARTAGER PROFIL</button>
+	                  <ShareProfileButton
+                      username={shareUsername}
+                      className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-5 text-sm font-black text-white backdrop-blur transition hover:bg-white/15"
+                    />
 		                  <div className="relative">
                     <button
                       type="button"
@@ -543,6 +573,21 @@ function formatUnix(value: unknown) {
   }
 
   return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(numeric * 1000));
+}
+
+function formatUnixDateTime(value: unknown) {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return "N/A";
+  }
+
+  const date = new Date(numeric * 1000);
+
+  const datePart = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  const timePart = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date);
+
+  return `${datePart} ${timePart}`;
 }
 
 function getFreeFireRank(points: number) {

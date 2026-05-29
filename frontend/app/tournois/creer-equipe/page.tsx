@@ -11,6 +11,19 @@ const members = ["Capitaine", "Joueur 2", "Joueur 3", "Joueur 4", "Remplaçant"]
 
 export default function CreateTeamPage() {
   const [step, setStep] = useState(1);
+  const [teamName, setTeamName] = useState("");
+  const [teamTag, setTeamTag] = useState("");
+
+  function submitTeam() {
+    const name = teamName.trim();
+    if (!name) return;
+
+    const payload = { name, tag: teamTag.trim() || null, points: 0, createdAt: new Date().toISOString() };
+
+    const stored = JSON.parse(localStorage.getItem("astral_created_teams") ?? "[]") as unknown[];
+    localStorage.setItem("astral_created_teams", JSON.stringify([payload, ...stored].slice(0, 50)));
+    window.location.href = "/tournois";
+  }
 
   return (
     <main className="min-h-screen bg-[#fbfbfd] text-[#080b15]">
@@ -56,13 +69,16 @@ export default function CreateTeamPage() {
             </div>
 
             <section className="rounded-lg border border-[#edf0f4] bg-white p-7 shadow-[0_2px_12px_rgba(16,24,40,.05)]">
-              {step === 1 && <TeamInfo />}
+              {step === 1 && <TeamInfo teamName={teamName} teamTag={teamTag} onTeamNameChange={setTeamName} onTeamTagChange={setTeamTag} />}
               {step === 2 && <MembersStep />}
-              {step === 3 && <ConfirmStep />}
+              {step === 3 && <ConfirmStep teamName={teamName} teamTag={teamTag} />}
 
               <div className="mt-7 flex gap-3">
                 {step > 1 && <button onClick={() => setStep(step - 1)} className="interactive-button h-12 rounded border border-[#6d28d9] px-6 text-xs font-black text-[#6d28d9]">RETOUR</button>}
-                <button onClick={() => setStep(step < 3 ? step + 1 : 3)} className="interactive-button flex h-12 flex-1 items-center justify-center gap-3 rounded bg-[#6d28d9] text-xs font-black text-white">
+                <button
+                  onClick={() => (step < 3 ? setStep(step + 1) : submitTeam())}
+                  className="interactive-button flex h-12 flex-1 items-center justify-center gap-3 rounded bg-[#6d28d9] text-xs font-black text-white"
+                >
                   {step === 1 && "CONTINUER : AJOUTER LES MEMBRES"}
                   {step === 2 && "CONTINUER : VÉRIFICATION"}
                   {step === 3 && "CONFIRMER ET CRÉER L'ÉQUIPE"}
@@ -87,13 +103,23 @@ export default function CreateTeamPage() {
   );
 }
 
-function TeamInfo() {
+function TeamInfo({
+  teamName,
+  teamTag,
+  onTeamNameChange,
+  onTeamTagChange
+}: {
+  teamName: string;
+  teamTag: string;
+  onTeamNameChange: (value: string) => void;
+  onTeamTagChange: (value: string) => void;
+}) {
   return (
     <>
       <h2 className="mb-7 text-lg font-black uppercase">Informations de l'équipe</h2>
       <div className="grid grid-cols-2 gap-6">
-        <Field label="Nom de l'équipe *" placeholder="Ex: NEXY ELITE" count="0/20" />
-        <Field label="Tag (optionnel)" placeholder="Ex: NXE" count="0/5" />
+        <Field label="Nom de l'équipe *" placeholder="Ex: NEXY ELITE" value={teamName} onChange={onTeamNameChange} maxLength={20} count={`${teamName.length}/20`} />
+        <Field label="Tag (optionnel)" placeholder="Ex: NXE" value={teamTag} onChange={onTeamTagChange} maxLength={5} count={`${teamTag.length}/5`} />
       </div>
       <div className="mt-7 grid grid-cols-[minmax(0,1fr)_210px_300px] gap-7">
         <div><Label>Logo de l'équipe *</Label><div className="mt-3 grid h-[210px] place-items-center rounded-lg border border-dashed border-[#7c3aed] bg-[#fbfbff] text-center text-xs text-[#6d28d9]"><div><CloudUpload className="mx-auto mb-3 h-9 w-9" /><b>Clique pour télécharger</b><p className="mt-3 text-[#6b7280]">PNG, JPG ou WEBP (max. 2MB)</p></div></div></div>
@@ -127,13 +153,18 @@ function MembersStep() {
   );
 }
 
-function ConfirmStep() {
+function ConfirmStep({ teamName, teamTag }: { teamName: string; teamTag: string }) {
   return (
     <>
       <h2 className="text-lg font-black uppercase">Vérification & confirmation</h2>
       <p className="mt-2 text-sm text-[#6b7280]">Relis les informations avant de créer l'équipe.</p>
       <div className="mt-6 grid grid-cols-2 gap-5">
-        <div className="rounded-lg border border-[#edf0f4] p-5"><h3 className="font-black">Équipe</h3><p className="mt-3 text-sm text-[#4b5563]">Nom : <b>NEXY ELITE</b></p><p className="mt-2 text-sm text-[#4b5563]">Tag : <b>NXE</b></p><p className="mt-2 text-sm text-[#4b5563]">Pays : <b>Sénégal</b></p></div>
+        <div className="rounded-lg border border-[#edf0f4] p-5">
+          <h3 className="font-black">Équipe</h3>
+          <p className="mt-3 text-sm text-[#4b5563]">Nom : <b>{teamName || "—"}</b></p>
+          <p className="mt-2 text-sm text-[#4b5563]">Tag : <b>{teamTag || "—"}</b></p>
+          <p className="mt-2 text-sm text-[#4b5563]">Pays : <b>Sénégal</b></p>
+        </div>
         <div className="rounded-lg border border-[#edf0f4] p-5"><h3 className="font-black">Tournoi</h3><p className="mt-3 text-sm text-[#4b5563]">NEXY CUP #12 - GRANDE FINALE</p><p className="mt-2 text-sm text-[#4b5563]">Mode : BR - Squad</p><p className="mt-2 text-sm text-[#4b5563]">Joueurs requis : 4</p></div>
       </div>
       <div className="mt-6 rounded-lg bg-[#f5f3ff] p-5 text-sm text-[#4b5563]"><ShieldCheck className="mr-2 inline h-5 w-5 text-[#6d28d9]" />En confirmant, tu acceptes le règlement officiel du tournoi.</div>
@@ -145,8 +176,39 @@ function Label({ children }: { children: ReactNode }) {
   return <label className="text-xs font-black uppercase text-[#111827]">{children}</label>;
 }
 
-function Field({ label, placeholder, count, icon }: { label: string; placeholder: string; count?: string; icon?: ReactNode }) {
-  return <div><Label>{label}</Label><div className="mt-3 flex h-12 items-center gap-3 rounded-lg border border-[#edf0f4] px-4 focus-within:border-[#6d28d9]">{icon}<input className="min-w-0 flex-1 bg-transparent text-sm outline-none" placeholder={placeholder} />{count && <span className="text-xs text-[#6b7280]">{count}</span>}</div></div>;
+function Field({
+  label,
+  placeholder,
+  count,
+  icon,
+  value,
+  onChange,
+  maxLength
+}: {
+  label: string;
+  placeholder: string;
+  count?: string;
+  icon?: ReactNode;
+  value?: string;
+  onChange?: (value: string) => void;
+  maxLength?: number;
+}) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div className="mt-3 flex h-12 items-center gap-3 rounded-lg border border-[#edf0f4] px-4 focus-within:border-[#6d28d9]">
+        {icon}
+        <input
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+          maxLength={maxLength}
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+          placeholder={placeholder}
+        />
+        {count && <span className="text-xs text-[#6b7280]">{count}</span>}
+      </div>
+    </div>
+  );
 }
 
 function SelectField({ label, value, icon }: { label: string; value: string; icon: string }) {
