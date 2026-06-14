@@ -1,0 +1,19 @@
+{
+  "name": "astral4gamer-discord-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js",
+    "assets": "node scripts/generate-freefire-flames.js",
+    "setup-server": "node scripts/setup-server.js",
+    "register": "node src/register-commands.js",
+    "check": "node --check src/index.js && node --check src/register-commands.js && node --check src/backend-client.js && node --check src/commands.js && node --check src/format.js && node --check src/modules.js && node --check src/storage.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.5.0",
+    "gifenc": "^1.0.3"
+  }
+}

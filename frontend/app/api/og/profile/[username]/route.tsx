@@ -5,7 +5,10 @@ export const runtime = "edge";
 
 type PublicProfile = {
   username: string;
+  display_name?: string | null;
   avatar: string | null;
+  game?: string | null;
+  player_uid?: string | null;
   rank: string | null;
   points: number;
   guild: string | null;
@@ -14,6 +17,15 @@ type PublicProfile = {
   kd_ratio: number | null;
   badges: unknown[];
   country: string | null;
+  free_fire?: {
+    uid?: string | null;
+    region?: string | null;
+    nickname?: string | null;
+    level?: number | string | null;
+    likes?: number | string | null;
+    br_rank_points?: number | string | null;
+    cs_rank_points?: number | string | null;
+  } | null;
   created_at: string | null;
 };
 
@@ -31,7 +43,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
 
   const safe = profile ?? {
     username,
+    display_name: username,
     avatar: null,
+    game: null,
+    player_uid: null,
     rank: null,
     points: 0,
     guild: null,
@@ -40,8 +55,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
     kd_ratio: null,
     badges: [],
     country: null,
+    free_fire: null,
     created_at: null
   };
+  const displayName = safe.display_name || safe.free_fire?.nickname || safe.username;
 
   return new ImageResponse(
     (
@@ -77,12 +94,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ usernam
 
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ fontSize: 64, fontWeight: 900, lineHeight: 1 }}>{safe.username}</div>
+              <div style={{ fontSize: 64, fontWeight: 900, lineHeight: 1 }}>{displayName}</div>
               <div style={{ width: 22, height: 22, borderRadius: 999, background: "#ff1f2f" }} />
             </div>
+            {displayName !== safe.username ? (
+              <div style={{ marginTop: 10, fontSize: 26, fontWeight: 800, color: "rgba(255,255,255,.55)" }}>@{safe.username}</div>
+            ) : null}
 
             <div style={{ marginTop: 16, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ padding: "10px 16px", borderRadius: 999, background: "rgba(255,31,47,.92)", fontSize: 20, fontWeight: 900 }}>JOUEUR PRO</div>
+              {safe.free_fire?.uid ? (
+                <div style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.06)", fontSize: 20, fontWeight: 900 }}>
+                  FF UID : {safe.free_fire.uid}
+                </div>
+              ) : null}
               <div style={{ padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.06)", fontSize: 20, fontWeight: 900 }}>
                 Rang : {safe.rank ?? "—"}
               </div>
@@ -122,4 +147,3 @@ function StatBox({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

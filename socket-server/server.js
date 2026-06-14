@@ -16,9 +16,23 @@ const io = new Server(server, {
 });
 
 const slowMode = new Map();
+const liveBaselineViewers = Number(process.env.LIVE_BASELINE_VIEWERS ?? (1 + Math.floor(Math.random() * 20)));
+
+function liveViewerCount() {
+  return liveBaselineViewers + (io.sockets.adapter.rooms.get("live")?.size ?? 0);
+}
+
+function broadcastLivePresence() {
+  io.to("live").emit("live:presence", {
+    viewers: liveViewerCount(),
+    connected: io.sockets.adapter.rooms.get("live")?.size ?? 0,
+    baseline: liveBaselineViewers
+  });
+}
 
 io.on("connection", (socket) => {
   socket.join("live");
+  broadcastLivePresence();
 
   socket.emit("notification", {
     type: "system",
@@ -45,11 +59,15 @@ io.on("connection", (socket) => {
   socket.on("tournament:score", (payload) => {
     io.to("live").emit("leaderboard:update", payload);
   });
+
+  socket.on("disconnect", () => {
+    broadcastLivePresence();
+  });
 });
 
 setInterval(() => {
   io.to("live").emit("live:metrics", {
-    viewers: 18000 + Math.floor(Math.random() * 900),
+    viewers: liveViewerCount(),
     remainingTeams: 8 + Math.floor(Math.random() * 12),
     kills: 300 + Math.floor(Math.random() * 120)
   });

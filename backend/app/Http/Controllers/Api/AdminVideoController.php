@@ -10,6 +10,8 @@ use App\Models\Stream;
 use App\Models\StreamMarker;
 use App\Models\YoutubeAccount;
 use App\Services\AI\ReplayHighlightService;
+use App\Services\AstralNotificationService;
+use App\Services\Discord\DiscordNotificationService;
 use App\Services\Obs\ObsWebSocketService;
 use App\Services\Video\FfmpegService;
 use App\Services\Video\YouTubeService;
@@ -52,8 +54,12 @@ class AdminVideoController extends Controller
         ]);
     }
 
-    public function createLive(Request $request, YouTubeService $youtube)
-    {
+    public function createLive(
+        Request $request,
+        YouTubeService $youtube,
+        AstralNotificationService $notifications,
+        DiscordNotificationService $discord
+    ) {
         $data = $request->validate([
             'tournament_id' => ['nullable', 'exists:tournaments,id'],
             'title' => ['required', 'string', 'max:180'],
@@ -65,17 +71,52 @@ class AdminVideoController extends Controller
         $account = YoutubeAccount::query()->latest()->first();
         abort_unless($account, 422, 'Aucun compte YouTube connecte.');
 
-        return response()->json(['data' => $youtube->createLive($account, $data)], 201);
+        $stream = $youtube->createLive($account, $data);
+
+        $notifications->broadcast([
+            'channel' => 'bell',
+            'type' => 'stream',
+            'title' => 'Stream programme',
+            'body' => $stream->title.' sera diffuse sur Astral4Gamer.',
+            'url' => '/live',
+            'action_label' => 'Voir le live',
+            'action_url' => rtrim((string) config('services.google.frontend_url'), '/').'/live',
+            'data' => ['stream_id' => $stream->id],
+        ], true);
+
+        $discord->streamPublished($stream);
+
+        return response()->json(['data' => $stream], 201);
     }
 
-    public function syncVideo(Request $request, YouTubeService $youtube)
-    {
+    public function syncVideo(
+        Request $request,
+        YouTubeService $youtube,
+        AstralNotificationService $notifications,
+        DiscordNotificationService $discord
+    ) {
         $data = $request->validate([
             'youtube_video_id' => ['required', 'string'],
             'type' => ['nullable', 'in:live,replay,highlight'],
         ]);
 
-        return response()->json(['data' => $youtube->syncVideoMetadata($data['youtube_video_id'], $data['type'] ?? 'replay')]);
+        $video = $youtube->syncVideoMetadata($data['youtube_video_id'], $data['type'] ?? 'replay');
+
+        if ($video) {
+            $notifications->broadcast([
+                'channel' => 'bell',
+                'type' => 'video',
+                'title' => 'Nouvelle video disponible',
+                'body' => $video->title,
+                'url' => '/replays',
+                'action_label' => 'Voir les videos',
+                'action_url' => rtrim((string) config('services.google.frontend_url'), '/').'/replays',
+                'data' => ['youtube_video_id' => $video->youtube_video_id],
+            ], true);
+            $discord->streamPublished($video);
+        }
+
+        return response()->json(['data' => $video]);
     }
 
     public function analyzeReplay(Replay $replay, ReplayHighlightService $service)
@@ -147,6 +188,41 @@ class AdminVideoController extends Controller
         ]);
 
         return response()->json(['data' => $marker], 201);
+    }
+
+    public function updateStreamStatus(Request $request, Stream $stream, DiscordNotificationService $discord)
+    {
+        $data = $request->validate([
+            'status' => ['required', 'in:scheduled,live,ended,cancelled'],
+            'watch_url' => ['nullable', 'url', 'max:500'],
+            'thumbnail_url' => ['nullable', 'url', 'max:500'],
+        ]);
+
+        $previousStatus = $stream->status;
+        $metadata = $stream->metadata ?? [];
+        $updates = [
+            'status' => $data['status'],
+            'watch_url' => $data['watch_url'] ?? $stream->watch_url,
+            'thumbnail_url' => $data['thumbnail_url'] ?? $stream->thumbnail_url,
+        ];
+
+        if ($data['status'] === 'live' && ! $stream->started_at) {
+            $updates['started_at'] = now();
+        }
+
+        if (in_array($data['status'], ['ended', 'cancelled'], true) && ! $stream->ended_at) {
+            $updates['ended_at'] = now();
+        }
+
+        $stream->update($updates);
+
+        if ($previousStatus !== 'live' && $stream->status === 'live' && empty($metadata['discord_live_announced_at'])) {
+            $discord->streamPublished($stream->fresh('tournament'), 'live');
+            $metadata['discord_live_announced_at'] = now()->toIso8601String();
+            $stream->forceFill(['metadata' => $metadata])->save();
+        }
+
+        return response()->json(['data' => $stream->fresh()]);
     }
 
     public function obsStatus(ObsWebSocketService $obs)

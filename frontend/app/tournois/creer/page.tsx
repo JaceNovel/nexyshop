@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeft, CalendarDays, CheckCircle2, Clock, Coins, Gamepad2, Image as ImageIcon, Info, Radio, ShieldCheck, Trophy, Users, Video } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, Clock, Coins, Gamepad2, Image as ImageIcon, Info, Loader2, Phone, Radio, ShieldCheck, Trophy, Users, Video } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SiteHeader } from "@/components/site-header";
+import { getTournamentSlots, requestTournamentCreation, type TournamentSlot } from "@/lib/api";
 
 const heroImage = "/ChatGPT%20Image%2029%20mai%202026,%2014_34_08.png";
 
@@ -24,22 +25,67 @@ export default function CreateTournamentPage() {
   const [teamType, setTeamType] = useState("Squad");
   const [startDate, setStartDate] = useState("");
   const [startTime, setStartTime] = useState("");
+  const [slots, setSlots] = useState<TournamentSlot[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<TournamentSlot | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(true);
   const [region, setRegion] = useState("Afrique");
   const [platform, setPlatform] = useState("Android");
+  const [phone, setPhone] = useState("");
   const [participants, setParticipants] = useState("48");
   const [rewardAmount, setRewardAmount] = useState("");
   const [funding, setFunding] = useState<FundingMode>("astral");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"idle" | "pending" | "created">("idle");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [paymentNotice, setPaymentNotice] = useState("");
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(null);
+  const [coverImageData, setCoverImageData] = useState<string | null>(null);
+  const [coverError, setCoverError] = useState("");
 
   const selectedGame = useMemo(() => games.find((item) => item.name === game) ?? games[0], [game]);
   const rewardUnit = selectedGame.reward;
   const isAstralFunded = funding === "astral";
-  const canSubmit = title.trim() && rewardAmount.trim() && startDate && startTime && participants.trim();
+  const canSubmit = Boolean(title.trim() && rewardAmount.trim() && selectedSlot && participants.trim() && phone.trim() && !submitting);
 
-  function submitTournament() {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSlots() {
+      setSlotsLoading(true);
+      const payload = await getTournamentSlots();
+
+      if (!cancelled) {
+        setSlots(payload.data);
+        setSelectedSlot(payload.data[0] ?? null);
+        if (payload.data[0]) {
+          syncSlotFields(payload.data[0]);
+        }
+        setSlotsLoading(false);
+      }
+    }
+
+    loadSlots();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (coverPreviewUrl) URL.revokeObjectURL(coverPreviewUrl);
+    };
+  }, [coverPreviewUrl]);
+
+  async function submitTournament() {
     if (!canSubmit) return;
+    const slot = selectedSlot;
+    if (!slot) return;
+
+    setSubmitError("");
+    setPaymentNotice("");
+    setSubmitting(true);
 
     const tournament = {
       id: Date.now(),
@@ -47,21 +93,111 @@ export default function CreateTournamentPage() {
       game,
       mode,
       teamType,
-      startsAt: `${startDate}T${startTime}`,
+      startsAt: slot.starts_at,
       region,
       platform,
+      phone,
       participants,
       rewardAmount,
       rewardUnit,
       funding,
       status: isAstralFunded ? "pending_financing_validation" : "scheduled",
       description,
+      coverImage: coverImageData,
       createdAt: new Date().toISOString()
     };
 
+    const token = localStorage.getItem("nexy_sanctum_token");
+    if (!token) {
+      setSubmitError("Connecte-toi pour réserver un créneau calendrier et créer le tournoi.");
+      setSubmitting(false);
+      return;
+    }
+
+    let createdTournamentId: number | null = null;
+    let checkoutUrl: string | null | undefined = null;
+    let paymentStatus: string | null | undefined = null;
+
+    try {
+      const response = await requestTournamentCreation(token, {
+        title,
+        game,
+        mode,
+        team_type: teamType,
+        slot: { starts_at: slot.starts_at, ends_at: slot.ends_at },
+        region,
+        platform,
+        phone,
+        participants: Number(participants),
+        reward_amount: Number(rewardAmount),
+        reward_unit: rewardUnit,
+        funding,
+        description,
+        cover_image: coverImageData
+      });
+      createdTournamentId = response.data.id;
+      checkoutUrl = response.checkout_url;
+      paymentStatus = response.payment_status;
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Création du tournoi impossible.");
+      setSubmitting(false);
+      return;
+    }
+
     const stored = JSON.parse(localStorage.getItem("astral_created_tournaments") ?? "[]") as unknown[];
-    localStorage.setItem("astral_created_tournaments", JSON.stringify([tournament, ...stored].slice(0, 20)));
+    localStorage.setItem("astral_created_tournaments", JSON.stringify([{ ...tournament, id: createdTournamentId ?? tournament.id }, ...stored].slice(0, 20)));
     setStatus(isAstralFunded ? "pending" : "created");
+    setStep(4);
+    setSubmitting(false);
+
+    if (checkoutUrl) {
+      window.location.assign(checkoutUrl);
+      return;
+    }
+
+    if (isAstralFunded && paymentStatus === "not_configured") {
+      setPaymentNotice("Le tournoi est enregistré. Le paiement 2$ sera disponible dès que Moneroo sera configuré côté serveur.");
+    } else if (isAstralFunded && paymentStatus === "unavailable") {
+      setPaymentNotice("Le tournoi est enregistré. Le lien de paiement n’a pas pu être généré pour le moment.");
+    }
+  }
+
+  function selectSlot(slot: TournamentSlot) {
+    setSelectedSlot(slot);
+    syncSlotFields(slot);
+  }
+
+  function syncSlotFields(slot: TournamentSlot) {
+    const start = new Date(slot.starts_at);
+    setStartDate(start.toISOString().slice(0, 10));
+    setStartTime(start.toTimeString().slice(0, 5));
+  }
+
+  function handleCoverChange(file?: File) {
+    setCoverError("");
+
+    if (!file) return;
+
+    if (file.size > 1_200_000) {
+      setCoverError("Image trop lourde. Choisis une image de 1,2 Mo maximum pour l’envoyer au backend.");
+      return;
+    }
+
+    const nextPreview = URL.createObjectURL(file);
+    setCoverPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return nextPreview;
+    });
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCoverImageData(typeof reader.result === "string" ? reader.result : null);
+    };
+    reader.onerror = () => {
+      setCoverError("Impossible de lire cette image.");
+      setCoverImageData(null);
+    };
+    reader.readAsDataURL(file);
   }
 
   return (
@@ -94,7 +230,7 @@ export default function CreateTournamentPage() {
         </aside>
 
         <section className="space-y-5">
-          <StepBar step={step} />
+          <StepBar step={step} onStepChange={setStep} />
 
           <div className="rounded-lg border border-[#e5e7eb] bg-white p-4 shadow-[0_18px_46px_rgba(16,24,40,.07)]">
             <div className="flex items-center justify-between border-b border-[#edf0f4] pb-4">
@@ -127,10 +263,38 @@ export default function CreateTournamentPage() {
                 </div>
               </div>
 
-              <Field label="Date de début" type="date" value={startDate} onChange={setStartDate} icon={<CalendarDays className="h-4 w-4" />} />
-              <Field label="Heure de début" type="time" value={startTime} onChange={setStartTime} icon={<Clock className="h-4 w-4" />} />
+              <Field label="Date de début" type="date" value={startDate} onChange={setStartDate} icon={<CalendarDays className="h-4 w-4" />} disabled />
+              <Field label="Heure de début" type="time" value={startTime} onChange={setStartTime} icon={<Clock className="h-4 w-4" />} disabled />
+              <div className="md:col-span-2">
+                <Label>Créneau disponible Astral4Gamer</Label>
+                {slotsLoading ? (
+                  <div className="mt-2 flex h-24 items-center justify-center gap-2 rounded-lg border border-[#d8dde7] bg-[#fbfbfd] text-sm font-black text-[#667085]">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Chargement du calendrier...
+                  </div>
+                ) : slots.length ? (
+                  <div className="mt-2 grid max-h-[190px] gap-2 overflow-y-auto rounded-lg border border-[#d8dde7] bg-[#fbfbfd] p-2 sm:grid-cols-2">
+                    {slots.map((slot) => (
+                      <button
+                        key={slot.id}
+                        type="button"
+                        onClick={() => selectSlot(slot)}
+                        className={`rounded-md border px-3 py-2 text-left text-xs font-black transition ${selectedSlot?.id === slot.id ? "border-[#e52b2f] bg-white text-[#e52b2f] shadow-[0_8px_18px_rgba(229,43,47,.1)]" : "border-[#e5e7eb] bg-white text-[#111827] hover:border-[#e52b2f]"}`}
+                      >
+                        {slot.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-lg border border-[#fee2e2] bg-[#fff5f5] p-3 text-sm font-bold text-[#b42318]">
+                    Aucun créneau disponible pour le moment.
+                  </div>
+                )}
+                <p className="mt-2 text-xs font-semibold text-[#667085]">Créneaux d’1h uniquement, disponibles à partir de 18h GMT, calculés depuis le calendrier Astral4Gamer et les tournois déjà réservés.</p>
+              </div>
               <SelectField label="Plateforme" value={platform} onChange={setPlatform} options={["Android", "iOS", "PC / Emulateur", "Toutes"]} />
               <SelectField label="Région" value={region} onChange={setRegion} options={["Afrique", "Moyen-Orient", "Europe", "Brésil", "Inde", "Asie"]} />
+              <Field label="Numéro de téléphone" type="tel" value={phone} onChange={setPhone} placeholder="Ex : +225 01 02 03 04 05" icon={<Phone className="h-4 w-4" />} />
               <Field label="Participants maximum" value={participants} onChange={setParticipants} placeholder="48" />
               <Field label={`Récompense à gagner (${rewardUnit})`} value={rewardAmount} onChange={setRewardAmount} placeholder={game === "Free Fire" ? "Ex : 1080" : "Ex : 500"} icon={<Coins className="h-4 w-4" />} />
 
@@ -145,17 +309,12 @@ export default function CreateTournamentPage() {
                     accept="image/*"
                     className="min-w-0 flex-1 text-sm font-semibold text-[#111827] file:mr-4 file:rounded-md file:border-0 file:bg-[#f2f4f7] file:px-3 file:py-1.5 file:text-xs file:font-black file:text-[#111827] hover:file:bg-[#e5e7eb]"
                     onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) return;
-                      const next = URL.createObjectURL(file);
-                      setCoverPreviewUrl((prev) => {
-                        if (prev) URL.revokeObjectURL(prev);
-                        return next;
-                      });
+                      handleCoverChange(event.target.files?.[0]);
                     }}
                   />
                 </span>
                 <p className="mt-2 text-xs font-semibold text-[#667085]">Ajoute une image : elle s’affichera dans l’aperçu et sur la carte du tournoi.</p>
+                {coverError ? <p className="mt-2 text-xs font-black text-[#b42318]">{coverError}</p> : null}
               </label>
 
               <div className="md:col-span-2">
@@ -205,10 +364,23 @@ export default function CreateTournamentPage() {
               </div>
             ) : null}
 
+            {submitError ? (
+              <div className="mt-5 rounded-lg border border-[#fee2e2] bg-[#fff5f5] p-4 text-sm font-black text-[#b42318]">
+                {submitError}
+              </div>
+            ) : null}
+
+            {paymentNotice ? (
+              <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-black text-amber-800">
+                {paymentNotice}
+              </div>
+            ) : null}
+
             <div className="mt-6 flex items-center justify-between gap-3">
-              <button onClick={() => setStep(Math.max(1, step - 1))} className="h-10 rounded-lg border border-[#d8dde7] px-4 text-[13px] font-black text-[#111827]">Retour</button>
-              <button disabled={!canSubmit} onClick={submitTournament} className="h-10 rounded-lg bg-[#e52b2f] px-5 text-[13px] font-black text-white shadow-[0_14px_28px_rgba(229,43,47,.22)] transition hover:bg-[#c91f27] disabled:cursor-not-allowed disabled:bg-[#fda4af]">
-                {isAstralFunded ? "Payer 2$ et envoyer en validation" : "Créer gratuitement"}
+              <button type="button" disabled={step === 1} onClick={() => setStep(Math.max(1, step - 1))} className="h-10 rounded-lg border border-[#d8dde7] px-4 text-[13px] font-black text-[#111827] transition hover:border-[#e52b2f] hover:text-[#e52b2f] disabled:cursor-not-allowed disabled:opacity-50">Retour</button>
+              <button type="button" disabled={!canSubmit} onClick={submitTournament} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#e52b2f] px-5 text-[13px] font-black text-white shadow-[0_14px_28px_rgba(229,43,47,.22)] transition hover:bg-[#c91f27] disabled:cursor-not-allowed disabled:bg-[#fda4af]">
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {submitting ? "Envoi au backend..." : isAstralFunded ? "Payer 2$ et envoyer en validation" : "Créer gratuitement"}
               </button>
             </div>
           </div>
@@ -255,7 +427,7 @@ export default function CreateTournamentPage() {
   );
 }
 
-function StepBar({ step }: { step: number }) {
+function StepBar({ step, onStepChange }: { step: number; onStepChange: (step: number) => void }) {
   const steps = ["Informations", "Règles", "Récompenses", "Aperçu"];
 
   return (
@@ -264,7 +436,7 @@ function StepBar({ step }: { step: number }) {
         {steps.map((item, index) => {
           const active = index + 1 <= step;
           return (
-            <button key={item} onClick={() => setTimeout(() => {}, 0)} className="min-w-0">
+            <button key={item} type="button" onClick={() => onStepChange(index + 1)} className="min-w-0">
               <span className="mx-auto grid h-8 w-8 place-items-center rounded-full border text-[11px] font-black transition" style={{ borderColor: active ? "#e52b2f" : "#e5e7eb", background: active ? "#e52b2f" : "#fff", color: active ? "#fff" : "#98a2b3" }}>
                 {index + 1}
               </span>
@@ -281,13 +453,13 @@ function Label({ children }: { children: ReactNode }) {
   return <span className="text-xs font-black text-[#111827]">{children}</span>;
 }
 
-function Field({ label, value, onChange, placeholder, type = "text", icon, className = "" }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; icon?: ReactNode; className?: string }) {
+function Field({ label, value, onChange, placeholder, type = "text", icon, className = "", disabled = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; icon?: ReactNode; className?: string; disabled?: boolean }) {
   return (
     <label className={className}>
       <Label>{label}</Label>
       <span className="mt-2 flex h-10 items-center gap-2 rounded-lg border border-[#d8dde7] px-4 transition focus-within:border-[#e52b2f] focus-within:ring-4 focus-within:ring-red-50">
         {icon ? <span className="text-[#98a2b3]">{icon}</span> : null}
-        <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold outline-none placeholder:text-[#98a2b3]" placeholder={placeholder} />
+        <input disabled={disabled} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold outline-none placeholder:text-[#98a2b3] disabled:text-[#667085]" placeholder={placeholder} />
       </span>
     </label>
   );
@@ -309,7 +481,7 @@ function SelectField({ label, value, onChange, options, icon }: { label: string;
 
 function ChoiceCard({ active, onClick, icon, title, text }: { active: boolean; onClick: () => void; icon: ReactNode; title: string; text: string }) {
   return (
-    <button onClick={onClick} className={`flex items-center gap-3 rounded-lg border p-3 text-left transition ${active ? "border-[#e52b2f] bg-red-50 text-[#e52b2f]" : "border-[#d8dde7] bg-white text-[#111827] hover:border-[#e52b2f]"}`}>
+    <button type="button" onClick={onClick} className={`flex items-center gap-3 rounded-lg border p-3 text-left transition ${active ? "border-[#e52b2f] bg-red-50 text-[#e52b2f]" : "border-[#d8dde7] bg-white text-[#111827] hover:border-[#e52b2f]"}`}>
       <span className="grid h-10 w-10 place-items-center rounded-lg bg-white shadow-[0_8px_20px_rgba(16,24,40,.06)]">{icon}</span>
       <span><b className="block text-[13px]">{title}</b><span className="mt-1 block text-xs font-semibold text-[#667085]">{text}</span></span>
     </button>
@@ -318,7 +490,7 @@ function ChoiceCard({ active, onClick, icon, title, text }: { active: boolean; o
 
 function FundingCard({ active, onClick, icon, title, price, text }: { active: boolean; onClick: () => void; icon: ReactNode; title: string; price: string; text: string }) {
   return (
-    <button onClick={onClick} className={`rounded-lg border p-3 text-left transition ${active ? "border-[#e52b2f] bg-[#fff5f5] shadow-[0_14px_30px_rgba(229,43,47,.08)]" : "border-[#d8dde7] bg-white hover:border-[#e52b2f]"}`}>
+    <button type="button" onClick={onClick} className={`rounded-lg border p-3 text-left transition ${active ? "border-[#e52b2f] bg-[#fff5f5] shadow-[0_14px_30px_rgba(229,43,47,.08)]" : "border-[#d8dde7] bg-white hover:border-[#e52b2f]"}`}>
       <span className="flex items-center justify-between gap-3">
         <span className={`grid h-10 w-10 place-items-center rounded-lg ${active ? "bg-[#e52b2f] text-white" : "bg-[#f2f4f7] text-[#667085]"}`}>{icon}</span>
         <b className={`rounded-full px-3 py-1 text-xs ${active ? "bg-[#e52b2f] text-white" : "bg-[#f2f4f7] text-[#111827]"}`}>{price}</b>

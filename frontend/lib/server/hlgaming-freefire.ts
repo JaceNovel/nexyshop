@@ -1,18 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const accountEndpoint = "https://proapis.hlgamingofficial.com/main/games/freefire/account/api";
-const validationEndpoint = "https://proapis.hlgamingofficial.com/main/games/freefire/validation/api";
-const metaEndpoint = "https://proapis.hlgamingofficial.com/main/games/freefire/meta/api";
-const supportedRegions = new Set(["in", "br", "sg", "ru", "id", "tw", "us", "vn", "th", "me", "pk", "bd", "cis"]);
+const defaultAccountEndpoint = "https://api.gameskinbo.com/ff-info/get";
+const supportedRegions = new Set(["in", "ind", "br", "sg", "ru", "id", "tw", "us", "vn", "th", "me", "pk", "bd", "cis", "sac", "na"]);
 const mediaDir = path.resolve(process.cwd(), "public/freefire-media");
 const cacheDir = path.resolve(process.cwd(), ".cache/freefire-profiles");
+const apiCacheDir = path.resolve(process.cwd(), ".cache/freefire-api");
 const profileCacheTtlMs = 6 * 60 * 60 * 1000;
+const validationCacheTtlMs = 12 * 60 * 60 * 1000;
+const pendingRequests = new Map<string, Promise<unknown>>();
 
 type Credentials = {
-  useruid: string;
   api: string;
+  accountEndpoint: string;
 };
+
+type JsonRecord = Record<string, unknown>;
 
 type FreeFireServerProfile = {
   uid: string;
@@ -35,37 +38,64 @@ type FreeFireServerProfile = {
 export async function validateFreeFirePlayer(uid: string, region: string) {
   const credentials = readCredentials();
   const normalizedRegion = normalizeRegion(region);
-  const payload = await getJson(validationEndpoint, {
-    sectionName: "freefireValidation",
-    useruid: credentials.useruid,
-    api: credentials.api,
-    uid,
-    region: normalizedRegion.toUpperCase()
-  });
+  const cacheKey = `validation-${normalizedRegion}-${uid}`;
+  const cachedValidation = readApiCache(cacheKey, validationCacheTtlMs);
 
-  const result = payload.result ?? {};
-
-  if (result.valid !== true) {
-    throw new Error("ID Free Fire incorrect.");
+  if (cachedValidation !== undefined) {
+    return cachedValidation as {
+      uid: string;
+      region: string;
+      nickname: string;
+      level: unknown;
+      verified: boolean;
+      usage: unknown;
+    };
   }
 
-  return {
-    uid: String(result.uid ?? uid),
-    region: normalizeRegion(String(result.AccountRegion ?? result.region ?? normalizedRegion)),
-    nickname: String(result.AccountName ?? `FreeFire_${uid}`),
-    level: result.AccountLevel ?? null,
-    verified: true,
-    usage: payload.usage ?? null
-  };
+  return dedupe(cacheKey, async () => {
+    const payload = await getGameskinboAccount(uid, normalizedRegion, credentials);
+    const payloadResult = asRecord(payload.result);
+    const result = asRecord(payload.AccountInfo ?? payloadResult.AccountInfo);
+
+    if (!result.AccountName) {
+      throw new Error("ID Free Fire incorrect.");
+    }
+
+    const validation = {
+      uid: String(result.uid ?? uid),
+      region: normalizeRegion(String(result.AccountRegion ?? result.region ?? normalizedRegion)),
+      nickname: String(result.AccountName ?? `FreeFire_${uid}`),
+      level: result.AccountLevel ?? null,
+      verified: true,
+      usage: payload.usage ?? null
+    };
+
+    writeApiCache(cacheKey, validation);
+
+    return validation;
+  }) as Promise<{
+    uid: string;
+    region: string;
+    nickname: string;
+    level: unknown;
+    verified: boolean;
+    usage: unknown;
+  }>;
 }
 
 export async function getFreeFirePlayerProfile(uid: string, region: string): Promise<FreeFireServerProfile> {
+  const normalizedRegion = normalizeRegion(region);
+  const requestKey = `profile-${normalizedRegion}-${uid}`;
   const cachedProfile = readProfileCache(uid, region);
 
   if (cachedProfile) {
     return cachedProfile;
   }
 
+  return dedupe(requestKey, () => fetchFreeFirePlayerProfile(uid, normalizedRegion)) as Promise<FreeFireServerProfile>;
+}
+
+async function fetchFreeFirePlayerProfile(uid: string, region: string): Promise<FreeFireServerProfile> {
   const credentials = readCredentials();
   let validation;
 
@@ -86,13 +116,7 @@ export async function getFreeFirePlayerProfile(uid: string, region: string): Pro
   let account;
 
   try {
-    account = await getJson(accountEndpoint, {
-      sectionName: "AllData",
-      PlayerUid: uid,
-      region: realRegion,
-      useruid: credentials.useruid,
-      api: credentials.api
-    });
+    account = { result: await getGameskinboAccount(uid, realRegion, credentials), usage: null };
   } catch (error) {
     const staleProfile = readProfileCache(uid, realRegion, true) ?? readProfileCache(uid, region, true);
 
@@ -103,33 +127,32 @@ export async function getFreeFirePlayerProfile(uid: string, region: string): Pro
     throw error;
   }
 
-  const visuals = await getJson(metaEndpoint, {
-    sectionName: "image",
-    useruid: credentials.useruid,
-    api: credentials.api,
-    playeruid: uid,
-    region: realRegion,
-    isBeta: "true",
-    cacheBuster: String(Date.now())
-  }).catch(() => ({ result: null, usage: null }));
+  const visuals = { result: null, usage: null };
 
-  const accountInfo = account.result?.AccountInfo ?? {};
-  const visualResult = visuals.result ?? {};
-  let outfitUrl = visualResult.outfitUrl ?? visualResult.url ?? null;
-  let bannerUrl = visualResult.bannerUrl ?? null;
-
-  if (isMissingImageUrl(outfitUrl) && accountInfo.AccountAvatarId) {
-    outfitUrl = await imageByCode(String(accountInfo.AccountAvatarId), credentials).catch(() => null);
-  }
-
-  if (isMissingImageUrl(bannerUrl) && accountInfo.AccountBannerId) {
-    bannerUrl = await imageByCode(String(accountInfo.AccountBannerId), credentials).catch(() => null);
-  }
+  const accountResult = asRecord(account.result);
+  const accountInfo = asRecord(accountResult.AccountInfo);
+  const profileInfo = asRecord(accountResult.AccountProfileInfo);
+  const visualResult = asRecord(visuals.result);
+  let outfitUrl =
+    stringValue(visualResult.outfitUrl) ??
+    stringValue(visualResult.url) ??
+    stringValue(accountInfo.AvatarUrl) ??
+    stringValue(accountInfo.avatarUrl) ??
+    stringValue(accountInfo.avatar_url) ??
+    stringValue(accountResult.avatar_url) ??
+    null;
+  let bannerUrl =
+    stringValue(visualResult.bannerUrl) ??
+    stringValue(accountInfo.BannerUrl) ??
+    stringValue(accountInfo.bannerUrl) ??
+    stringValue(accountInfo.banner_url) ??
+    stringValue(accountResult.banner_url) ??
+    null;
 
   const localOutfitUrl = await persistRemoteImage(outfitUrl, `${uid}-avatar`).catch(() => null);
   const localBannerUrl = await persistRemoteImage(bannerUrl, `${uid}-banner`).catch(() => null);
-  const finalOutfitUrl = localOutfitUrl ?? (isGenericHlImage(outfitUrl) ? null : outfitUrl);
-  const finalBannerUrl = localBannerUrl ?? (isGenericHlImage(bannerUrl) ? null : bannerUrl);
+  const finalOutfitUrl = localOutfitUrl ?? (isGenericProviderImage(outfitUrl) ? null : outfitUrl);
+  const finalBannerUrl = localBannerUrl ?? (isGenericProviderImage(bannerUrl) ? null : bannerUrl);
 
   const profile = {
     uid: validation.uid,
@@ -137,18 +160,18 @@ export async function getFreeFirePlayerProfile(uid: string, region: string): Pro
     nickname: String(accountInfo.AccountName ?? validation.nickname),
     level: accountInfo.AccountLevel ?? validation.level ?? null,
     likes: accountInfo.AccountLikes ?? null,
-    br_rank_points: accountInfo.BrRankPoint ?? null,
-    cs_rank_points: accountInfo.CsRankPoint ?? null,
+    br_rank_points: profileInfo.BrRankPoint ?? accountInfo.BrRankPoint ?? null,
+    cs_rank_points: profileInfo.CsRankPoint ?? accountInfo.CsRankPoint ?? null,
     rank: {
-      br: accountInfo.BrMaxRank ?? null,
-      cs: accountInfo.CsMaxRank ?? null,
+      br: profileInfo.BrMaxRank ?? accountInfo.BrMaxRank ?? null,
+      cs: profileInfo.CsMaxRank ?? accountInfo.CsMaxRank ?? null,
       season: accountInfo.AccountSeasonId ?? null
     },
-    guild: account.result?.GuildInfo ?? null,
-    stats: account.result?.playerStats ?? null,
+    guild: accountResult.GuildInfo ?? null,
+    stats: accountResult.playerStats ?? accountResult.PlayerStats ?? null,
     outfit_url: finalOutfitUrl,
     banner_url: finalBannerUrl,
-    account: account.result ?? null,
+    account: accountResult,
     usage: {
       validation: validation.usage ?? null,
       account: account.usage ?? null,
@@ -173,14 +196,14 @@ export function getLikesQuote(likes = 100) {
 
 function readCredentials(): Credentials {
   const env = { ...process.env, ...readBackendEnv() };
-  const useruid = env.HLGAMING_USERUID;
-  const api = env.HLGAMING_API_KEY;
+  const api = env.GAMESKINBO_API_KEY;
+  const accountEndpoint = env.GAMESKINBO_FREEFIRE_ENDPOINT || defaultAccountEndpoint;
 
-  if (!useruid || !api) {
-    throw new Error("Identifiants HL Gaming manquants côté serveur.");
+  if (!api) {
+    throw new Error("Clé API Gameskinbo manquante.");
   }
 
-  return { useruid, api };
+  return { api, accountEndpoint };
 }
 
 function readBackendEnv() {
@@ -215,24 +238,37 @@ function normalizeRegion(region: string) {
   return normalized;
 }
 
-async function imageByCode(code: string, credentials: Credentials) {
-  const payload = await getJson(metaEndpoint, {
-    sectionName: "image",
-    useruid: credentials.useruid,
-    api: credentials.api,
-    img_code: code,
-    cacheBuster: String(Date.now())
-  });
+async function getGameskinboAccount(uid: string, region: string, credentials: Credentials) {
+  const query: Record<string, string> = { uid };
+  const apiRegion = gameskinboRegion(region);
 
-  return payload.result?.url ?? null;
+  if (apiRegion) {
+    query.region = apiRegion;
+  }
+
+  return getJson(credentials.accountEndpoint, query, credentials.api);
 }
 
-async function getJson(endpoint: string, query: Record<string, string>) {
+async function getJson(endpoint: string, query: Record<string, string>, apiKey: string) {
   const url = new URL(endpoint);
   Object.entries(query).forEach(([key, value]) => url.searchParams.set(key, value));
 
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "x-api-key": apiKey
+    }
+  });
   const payload = await response.json().catch(() => ({}));
+
+  if (response.status === 429) {
+    throw new Error("Quota API Free Fire dépassé. Réessaie plus tard.");
+  }
+
+  if (response.status === 401) {
+    throw new Error("Clé API Gameskinbo invalide ou manquante.");
+  }
 
   if (!response.ok) {
     throw new Error(payload.message ?? "Service Free Fire indisponible.");
@@ -245,8 +281,34 @@ function isMissingImageUrl(url?: string | null) {
   return !url || decodeURIComponent(url).toLowerCase().includes("not found");
 }
 
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function gameskinboRegion(region: string) {
+  const normalized = normalizeRegion(region);
+  const map: Record<string, string> = {
+    in: "IND",
+    ind: "IND",
+    bd: "BD",
+    br: "BR",
+    us: "US",
+    sac: "SAC",
+    na: "NA",
+    id: "ID",
+    sg: "SG",
+    pk: "PK"
+  };
+
+  return map[normalized] ?? null;
+}
+
 async function persistRemoteImage(url: string | null | undefined, name: string) {
-  if (isMissingImageUrl(url) || isGenericHlImage(url)) {
+  if (isMissingImageUrl(url) || isGenericProviderImage(url)) {
     return null;
   }
 
@@ -287,7 +349,7 @@ function imageExtension(url: string) {
   return "jpg";
 }
 
-function isGenericHlImage(url?: string | null) {
+function isGenericProviderImage(url?: string | null) {
   if (!url) return true;
 
   const decoded = decodeURIComponent(url).toLowerCase();
@@ -323,6 +385,49 @@ function readProfileCache(uid: string, region: string, allowStale = false): Free
 function writeProfileCache(uid: string, region: string, profile: unknown) {
   fs.mkdirSync(cacheDir, { recursive: true });
   fs.writeFileSync(profileCachePath(uid, region), JSON.stringify({ savedAt: Date.now(), profile }, null, 2));
+}
+
+function apiCachePath(key: string) {
+  return path.join(apiCacheDir, `${key.replace(/[^a-z0-9._-]/gi, "_")}.json`);
+}
+
+function readApiCache(key: string, ttlMs: number) {
+  try {
+    const filePath = apiCachePath(key);
+
+    if (!fs.existsSync(filePath)) {
+      return undefined;
+    }
+
+    const cached = JSON.parse(fs.readFileSync(filePath, "utf8")) as { savedAt?: number; value?: unknown };
+    const age = Date.now() - Number(cached.savedAt ?? 0);
+
+    if (age > ttlMs) {
+      return undefined;
+    }
+
+    return cached.value;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeApiCache(key: string, value: unknown) {
+  fs.mkdirSync(apiCacheDir, { recursive: true });
+  fs.writeFileSync(apiCachePath(key), JSON.stringify({ savedAt: Date.now(), value }, null, 2));
+}
+
+function dedupe<T>(key: string, factory: () => Promise<T>) {
+  const pending = pendingRequests.get(key);
+
+  if (pending) {
+    return pending as Promise<T>;
+  }
+
+  const request = factory().finally(() => pendingRequests.delete(key));
+  pendingRequests.set(key, request);
+
+  return request;
 }
 
 function isQuotaError(error: unknown) {

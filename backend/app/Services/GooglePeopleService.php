@@ -22,7 +22,11 @@ class GooglePeopleService
             'client_id' => config('services.google.client_id'),
             'redirect_uri' => config('services.google.redirect_uri'),
             'response_type' => 'code',
-            'scope' => implode(' ', config('services.google.people_scopes')),
+            'scope' => implode(' ', array_values(array_unique([
+                ...config('services.google.people_scopes'),
+                ...config('services.google.youtube_engagement_scopes', []),
+                ...config('services.blogger.oauth_scopes', []),
+            ]))),
             'access_type' => 'offline',
             'include_granted_scopes' => 'true',
             'prompt' => 'consent',

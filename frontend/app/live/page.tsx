@@ -1,5 +1,6 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
 import {
   BadgeCheck,
   Bell,
@@ -22,9 +23,10 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { YouTubePlayer } from "@/components/youtube-player";
+import { socket } from "@/lib/socket";
 
 const streamImage = "https://wallpapercave.com/wp/wp7536967.jpg";
 const giftImage = "https://img.icons8.com/color/192/gift.png";
@@ -40,6 +42,23 @@ type ChatMessage = {
   time: string;
   role?: "official" | "host" | "viewer" | "me";
 };
+
+type StoredFreeFireProfile = {
+  nickname?: string | null;
+};
+
+type ChatIdentity = {
+  name: string;
+  avatar?: string;
+};
+
+const qualityOptions = [
+  { value: "hd1080", label: "1080p" },
+  { value: "hd720", label: "720p" },
+  { value: "hd480", label: "480p HD" },
+  { value: "medium", label: "360p" },
+  { value: "small", label: "240p" }
+];
 
 const initialMessages: ChatMessage[] = [
   { name: "Astral Officiel", text: "Prochain round dans 5 min.", time: "il y a 1 min", role: "official" },
@@ -92,7 +111,7 @@ const matches: Array<[string, string, string, string, LucideIcon]> = [
 ];
 
 const liveStats: Array<[string, string, LucideIcon]> = [
-  ["1,245", "Spectateurs", Users],
+  ["0", "Spectateurs", Users],
   ["12", "Équipes en vie", Shield],
   ["0", "Kills total", Trophy],
   ["03:21:45", "Durée du live", Clock3],
@@ -105,14 +124,31 @@ function formatTimer(seconds: number) {
   return `${minutes}:${rest}`;
 }
 
+function createBaselineViewers() {
+  return 1 + Math.floor(Math.random() * 20);
+}
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat("fr-FR").format(Math.max(0, Math.round(value)));
+}
+
 export default function LivePage() {
+  const fallbackViewers = useRef(createBaselineViewers());
+  const { user } = useUser();
   const [isPlaying, setIsPlaying] = useState(true);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [volume, setVolume] = useState(80);
+  const [quality, setQuality] = useState("hd480");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [playerReloadKey, setPlayerReloadKey] = useState(0);
+  const [videoProgress, setVideoProgress] = useState(0);
   const [nextRoundIn, setNextRoundIn] = useState(338);
   const [watchMinutes, setWatchMinutes] = useState(45);
   const [bonusClaimed, setBonusClaimed] = useState(false);
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState(initialMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [...initialMessages].reverse());
+  const [chatIdentity, setChatIdentity] = useState<ChatIdentity>({ name: "Vous" });
   const [teamsModalOpen, setTeamsModalOpen] = useState(false);
   const [challengeModalOpen, setChallengeModalOpen] = useState(false);
   const [challengeGame, setChallengeGame] = useState("Free Fire");
@@ -120,6 +156,9 @@ export default function LivePage() {
   const [liveTeams, setLiveTeams] = useState<LiveTeam[]>(defaultTeams);
   const [aliveTeams, setAliveTeams] = useState<LiveTeamDetail[]>(defaultAliveTeams);
   const [ranking, setRanking] = useState<LiveRankingRow[]>(defaultRanking);
+  const [liveViewers, setLiveViewers] = useState(fallbackViewers.current);
+  const playerShellRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -135,11 +174,35 @@ export default function LivePage() {
       setLiveTeams(readJson<LiveTeam[]>("astral_live_teams", defaultTeams));
       setAliveTeams(readJson<LiveTeamDetail[]>("astral_live_alive_teams", defaultAliveTeams));
       setRanking(readJson<LiveRankingRow[]>("astral_live_ranking", defaultRanking));
+      setChatIdentity(getCurrentChatIdentity(user));
     }
 
     refresh();
     window.addEventListener("storage", refresh);
     return () => window.removeEventListener("storage", refresh);
+  }, [user]);
+
+  useEffect(() => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [messages]);
+
+  useEffect(() => {
+    function updateViewers(payload: { viewers?: number }) {
+      if (typeof payload.viewers === "number" && Number.isFinite(payload.viewers)) {
+        setLiveViewers(Math.max(fallbackViewers.current, payload.viewers));
+      }
+    }
+
+    socket.connect();
+    socket.on("live:presence", updateViewers);
+    socket.on("live:metrics", updateViewers);
+
+    return () => {
+      socket.off("live:presence", updateViewers);
+      socket.off("live:metrics", updateViewers);
+    };
   }, []);
 
   const totalKills = useMemo(() => liveTeams.reduce((sum, team) => sum + team.kills, 0), [liveTeams]);
@@ -149,16 +212,40 @@ export default function LivePage() {
   function sendMessage() {
     const text = message.trim();
     if (!text) return;
-    setMessages((current) => [{ name: "Vous", text, avatar: "https://i.pravatar.cc/48?img=3", time: "maintenant", role: "me" }, ...current]);
+    const identity = getCurrentChatIdentity(user);
+    setChatIdentity(identity);
+    setMessages((current) => [...current, { ...identity, text, time: "maintenant", role: "me" }]);
     setMessage("");
+  }
+
+  function togglePlayback() {
+    if (isPlaying) {
+      setIsPlaying(false);
+      return;
+    }
+
+    setPlayerReloadKey((value) => value + 1);
+    setIsPlaying(true);
+  }
+
+  async function enterFullscreen() {
+    const target = playerShellRef.current;
+    if (!target) return;
+
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => {});
+      return;
+    }
+
+    await target.requestFullscreen?.().catch(() => {});
   }
 
   return (
     <main className="min-h-screen bg-[#fbfbfd] text-[#111827]">
       <SiteHeader />
 
-      <section className="mx-auto grid w-full max-w-[1880px] grid-cols-[260px_minmax(0,1fr)_390px] gap-5 px-8 py-5">
-        <aside className="space-y-3">
+      <section className="mx-auto grid w-full max-w-[1880px] gap-3 px-3 py-3 sm:px-5 md:gap-5 md:py-5 xl:grid-cols-[230px_minmax(0,1fr)_330px] 2xl:grid-cols-[260px_minmax(0,1fr)_390px] 2xl:px-8">
+        <aside className="grid gap-3 sm:grid-cols-3 xl:block xl:space-y-3">
           <Panel className="p-4 text-center">
             <span className="inline-flex rounded bg-[#e52b2f] px-3 py-1.5 text-[11px] font-black text-white shadow-[0_10px_26px_rgba(229,43,47,.25)]">EN DIRECT</span>
             <p className="mt-4 text-xs font-black uppercase text-[#667085]">Finale officielle Astral</p>
@@ -190,9 +277,9 @@ export default function LivePage() {
             <button onClick={() => setTeamsModalOpen(true)} className="interactive-button mt-4 h-9 w-full rounded bg-[#f5f3ff] text-[11px] font-black text-[#6d28d9]">VOIR TOUTES LES ÉQUIPES EN VIE</button>
           </Panel>
 
-          <Panel className="relative min-h-[250px] overflow-hidden p-4 text-center">
+          <Panel className="relative min-h-[190px] overflow-hidden p-4 text-center sm:col-span-3 xl:col-span-1 xl:min-h-[250px]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(229,43,47,.28),transparent_52%),linear-gradient(135deg,#ffffff,#fff5f5)]" />
-            <div className="relative z-10 flex min-h-[256px] flex-col justify-end">
+            <div className="relative z-10 flex min-h-[190px] flex-col justify-end xl:min-h-[256px]">
               <p className="text-[21px] font-black leading-6">Défiez<br />Astral4Gamer</p>
               <p className="mt-4 text-xs font-black uppercase tracking-normal text-[#667085]">Récompense</p>
               <p className="text-[40px] font-black leading-none text-[#ff4b55]">4000</p>
@@ -204,11 +291,11 @@ export default function LivePage() {
 
         <section className="min-w-0 space-y-3">
           <Panel className="overflow-hidden">
-            <div className="flex h-12 items-center justify-between gap-4 px-4">
-              <div className="flex items-center gap-3">
-                <h1 className="text-[20px] font-black">Astral Cup #12 - Grande finale</h1>
+            <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 px-3 py-2 md:px-4">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 md:gap-3">
+                <h1 className="text-[16px] font-black md:text-[20px]">Astral Cup #12 - Grande finale</h1>
                 <span className="rounded bg-[#ef4444] px-2 py-1 text-[11px] font-black text-white">EN DIRECT</span>
-                <span className="flex items-center gap-1 text-xs"><Eye className="h-4 w-4" /> 1,245</span>
+                <span className="flex items-center gap-1 text-xs"><Eye className="h-4 w-4" /> {formatCount(liveViewers)}</span>
               </div>
               <div className="flex gap-2">
                 <button className="interactive-button grid h-8 w-8 place-items-center rounded bg-[#f6f6f7] text-[#111827]" aria-label="Partager"><Share2 className="h-4 w-4" /></button>
@@ -218,49 +305,96 @@ export default function LivePage() {
               </div>
             </div>
 
-            <div className="relative aspect-video overflow-hidden bg-black">
+            <div
+              ref={playerShellRef}
+              onClick={() => setControlsVisible((value) => !value)}
+              className="relative aspect-video cursor-pointer overflow-hidden bg-black"
+            >
               <img src={streamImage} alt="Live Free Fire" className={`h-full w-full object-cover transition duration-500 ${isPlaying ? "scale-100" : "scale-[1.02] opacity-80"}`} />
               <div className="absolute inset-0">
-                <YouTubePlayer videoId="M7lc1UVf-VE" autoplay={isPlaying} title="Live NEXY" className="h-full" />
+                <YouTubePlayer
+                  key={playerReloadKey}
+                  videoId="M7lc1UVf-VE"
+                  autoplay={isPlaying}
+                  volume={volume}
+                  playbackQuality={quality}
+                  onProgress={(progress) => setVideoProgress(progress.percent)}
+                  title="Live NEXY"
+                  className="h-full"
+                />
               </div>
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/25" />
-              <div className="absolute left-4 right-4 top-3 flex items-center justify-between text-white">
-                <div className="flex items-center gap-4 text-xs font-black"><span>Signal 17 ms</span><span>Zone 12%</span><span>NW 330 345 N 5 30 NE</span></div>
-                <div className="flex items-center gap-2 text-xs font-black"><span className="bg-emerald-500 px-2 py-1">ALIVE 12</span><span className="bg-red-500 px-2 py-1">KILL {totalKills}</span><Settings className="h-5 w-5" /></div>
+              <div className={`absolute left-2 right-2 top-2 flex items-center justify-between text-white transition-opacity duration-200 md:left-4 md:right-4 md:top-3 ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}>
+                <div className="hidden items-center gap-4 text-xs font-black sm:flex"><span>Signal 17 ms</span><span>Zone 12%</span><span>NW 330 345 N 5 30 NE</span></div>
+                <div className="ml-auto flex items-center gap-1.5 text-[10px] font-black md:gap-2 md:text-xs"><span className="bg-emerald-500 px-2 py-1">ALIVE 12</span><span className="bg-red-500 px-2 py-1">KILL {totalKills}</span><span>{qualityOptions.find((option) => option.value === quality)?.label}</span></div>
               </div>
-              <div className="absolute left-4 top-24 w-[145px] space-y-1 text-[11px] font-black text-white">
+              <div className={`absolute left-2 top-12 hidden w-[145px] space-y-1 text-[11px] font-black text-white transition-opacity duration-200 sm:block md:left-4 md:top-24 ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}>
                 {["TM-MAFIA", "TM-FozyAjay", "PRIME-Sahel", "DRAGON-Ilyas"].map((player, index) => (
                   <div key={player} className="flex bg-black/55"><span className="w-6 bg-[#e52b2f] text-center">{index + 1}</span><span className="px-2">{player}</span></div>
                 ))}
               </div>
-              {!isPlaying && <div className="absolute inset-0 z-10 grid place-items-center text-white"><span className="rounded-full bg-black/55 px-5 py-3 text-sm font-black">Live en pause</span></div>}
-              <div className="absolute bottom-14 left-[30%] w-[180px] bg-black/70 p-2 text-white">
+              {!isPlaying && <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center text-white"><span className="rounded-full bg-black/55 px-5 py-3 text-sm font-black">Live en pause</span></div>}
+              <div className={`absolute bottom-12 left-3 hidden w-[180px] bg-black/70 p-2 text-white transition-opacity duration-200 sm:block md:bottom-14 md:left-[30%] ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}>
                 <b>TM-MAFIA</b><p className="text-[11px]">Eliminations: 5 • HP 200/200</p><div className="mt-1 h-2.5 bg-white"><span className="block h-full w-full bg-[#dbeafe]" /></div>
               </div>
-              <div className="absolute bottom-0 left-0 right-0 px-5 pb-3 text-white">
-                <div className="h-1 rounded-full bg-white/35"><span className="block h-full w-[72%] rounded-full bg-[#ef4444]" /></div>
-                <div className="mt-3 flex items-center gap-4 text-sm font-black">
-                  <button onClick={() => setIsPlaying((value) => !value)} className="interactive-icon">{isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}</button>
-                  <Volume2 className="h-5 w-5" />
-                  <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-[#ef4444]" /> EN DIRECT</span>
-                  <span className="ml-auto flex gap-5"><Settings className="h-5 w-5" /><Maximize className="h-5 w-5" /></span>
+              <div
+                onClick={(event) => event.stopPropagation()}
+                className={`absolute bottom-0 left-0 right-0 z-20 px-3 pb-2 text-white transition-opacity duration-200 md:px-5 md:pb-3 ${controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+              >
+                <div className="h-1 rounded-full bg-white/35"><span className="block h-full rounded-full bg-[#ef4444] transition-[width] duration-300" style={{ width: `${videoProgress}%` }} /></div>
+                <div className="mt-2 flex items-center gap-3 text-xs font-black md:mt-3 md:gap-4 md:text-sm">
+                  <button onClick={togglePlayback} className="interactive-icon" aria-label={isPlaying ? "Mettre en pause" : "Reprendre le direct"}>{isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}</button>
+                  <label className="flex items-center gap-2">
+                    <Volume2 className="h-5 w-5" />
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={volume}
+                      onChange={(event) => setVolume(Number(event.target.value))}
+                      className="h-1 w-16 accent-[#ef4444] md:w-24"
+                      aria-label="Volume du live"
+                    />
+                  </label>
+                  <span className="hidden items-center gap-2 sm:flex"><span className="h-3 w-3 rounded-full bg-[#ef4444]" /> EN DIRECT</span>
+                  <span className="relative ml-auto flex gap-5">
+                    <button onClick={() => setSettingsOpen((value) => !value)} className="interactive-icon" aria-label="Paramètres vidéo"><Settings className="h-5 w-5" /></button>
+                    {settingsOpen ? (
+                      <span className="absolute bottom-8 right-8 w-36 rounded-lg border border-white/10 bg-black/85 p-2 text-xs shadow-[0_16px_38px_rgba(0,0,0,.35)]">
+                        <b className="mb-2 block text-[10px] uppercase text-white/60">Résolution</b>
+                        {qualityOptions.map((option) => (
+                          <button
+                            key={option.value}
+                            onClick={() => {
+                              setQuality(option.value);
+                              setSettingsOpen(false);
+                            }}
+                            className={`block w-full rounded px-2 py-1.5 text-left font-black ${quality === option.value ? "bg-[#ef4444] text-white" : "text-white hover:bg-white/10"}`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </span>
+                    ) : null}
+                    <button onClick={enterFullscreen} className="interactive-icon" aria-label="Plein écran"><Maximize className="h-5 w-5" /></button>
+                  </span>
                 </div>
               </div>
             </div>
           </Panel>
 
-          <Panel className="grid grid-cols-5 divide-x divide-[#edf0f4] p-3">
+          <Panel className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 lg:grid-cols-5 lg:divide-x lg:divide-[#edf0f4]">
             {liveStats.map(([value, label, Icon]) => (
-              <div key={label as string} className="flex items-center gap-3 px-4">
-                <span className="grid h-10 w-10 place-items-center rounded-lg bg-[#fff5f5] text-[#e52b2f]"><Icon className="h-5 w-5" /></span>
-                <span><b className="text-sm">{label === "Kills total" ? totalKills : value}</b><br /><small className="text-[11px] text-[#4b5563]">{label}</small></span>
+              <div key={label as string} className="flex items-center gap-2 rounded bg-[#fbfbfd] px-2 py-2 lg:bg-transparent lg:px-4">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fff5f5] text-[#e52b2f] md:h-10 md:w-10"><Icon className="h-4 w-4 md:h-5 md:w-5" /></span>
+                <span><b className="text-sm">{label === "Spectateurs" ? formatCount(liveViewers) : label === "Kills total" ? totalKills : value}</b><br /><small className="text-[11px] text-[#4b5563]">{label}</small></span>
               </div>
             ))}
           </Panel>
 
           <Panel className="p-4">
             <h2 className="text-xs font-black uppercase text-[#667085]">Prochains matchs</h2>
-            <div className="mt-3 grid grid-cols-4 gap-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {matches.map(([time, title, map, teamCount, Icon]) => (
                 <article key={title} className="soft-pop rounded-lg border border-[#edf0f4] bg-white p-3">
                   <div className="flex items-center gap-2">
@@ -281,14 +415,14 @@ export default function LivePage() {
         <aside className="space-y-3">
           <Panel className="overflow-hidden">
             <div className="flex h-12 items-center justify-between border-b border-[#edf0f4] bg-white px-4"><h2 className="text-sm font-black">CHAT EN DIRECT</h2><b className="text-[#6d28d9]">{messages.length}</b></div>
-            <div className="max-h-[390px] space-y-3 overflow-y-auto px-3 py-4">
+            <div ref={chatScrollRef} className="max-h-[300px] space-y-3 overflow-y-auto px-3 py-4 xl:max-h-[390px]">
               {messages.map((chat, index) => (
                 <ChatBubble key={`${chat.name}-${chat.text}-${index}`} chat={chat} />
               ))}
             </div>
             <div className="flex gap-2 border-t border-[#edf0f4] bg-white p-3">
               <input value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => event.key === "Enter" && sendMessage()} className="h-11 flex-1 rounded-lg bg-[#f8fafc] px-3 text-sm outline-none transition focus:bg-white focus:shadow-[0_0_0_2px_rgba(109,40,217,.16)]" placeholder="Écrire un message..." />
-              <button onClick={sendMessage} className="interactive-button flex h-11 items-center gap-2 rounded-lg bg-[#6d28d9] px-4 text-xs font-black text-white"><Send className="h-4 w-4" />ENVOYER</button>
+              <button onClick={sendMessage} className="interactive-button flex h-11 items-center gap-2 rounded-lg bg-[#6d28d9] px-3 text-xs font-black text-white md:px-4"><Send className="h-4 w-4" /><span className="hidden sm:inline">ENVOYER</span></button>
             </div>
           </Panel>
 
@@ -442,7 +576,49 @@ function ChatAvatar({ chat }: { chat: ChatMessage }) {
 
   return (
     <span className="grid h-8 w-8 place-items-center rounded-full bg-[#6d28d9] text-xs font-black text-white ring-2 ring-white">
-      A
+      {(chat.name || "A").slice(0, 1).toUpperCase()}
     </span>
   );
+}
+
+function getCurrentChatIdentity(user?: {
+  fullName?: string | null;
+  username?: string | null;
+  imageUrl?: string | null;
+  primaryEmailAddress?: { emailAddress?: string | null } | null;
+  unsafeMetadata?: { free_fire?: StoredFreeFireProfile | null } | null;
+} | null): ChatIdentity {
+  const storedFreeFire = readJson<StoredFreeFireProfile | null>("astral_freefire_profile", null);
+  const clerkFreeFire = user?.unsafeMetadata?.free_fire ?? null;
+  const activeFreeFire = storedFreeFire ?? clerkFreeFire;
+  const freeFireName = cleanPlayerName(activeFreeFire?.nickname);
+  const accountName =
+    cleanPlayerName(localStorage.getItem("nexy_google_name")) ??
+    cleanPlayerName(user?.fullName) ??
+    cleanPlayerName(user?.username) ??
+    cleanPlayerName(user?.primaryEmailAddress?.emailAddress);
+  const accountAvatar = usableAccountImage(localStorage.getItem("nexy_google_avatar")) ?? usableAccountImage(user?.imageUrl);
+
+  return {
+    name: freeFireName ?? accountName ?? "Vous",
+    avatar: accountAvatar ?? undefined
+  };
+}
+
+function cleanPlayerName(name?: string | null) {
+  if (!name) return null;
+
+  const cleaned = name.trim();
+  if (!cleaned || cleaned.toLowerCase() === "null" || cleaned.toLowerCase() === "undefined") return null;
+
+  return cleaned;
+}
+
+function usableAccountImage(url?: string | null) {
+  if (!url) return null;
+
+  const decoded = decodeURIComponent(url).toLowerCase();
+  if (decoded.includes("not found") || decoded.includes("hl gaming official")) return null;
+
+  return url;
 }

@@ -6,12 +6,13 @@ import { getBlogPost } from "@/lib/api";
 
 type Props = { params: Promise<{ slug: string }> };
 
+const blogHeroImage = "/ChatGPT%20Image%2028%20mai%202026%2C%2015_36_59.png";
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
 
   try {
     const { data: post } = await getBlogPost(slug);
-    const image = post.cover_image_url ?? "/hero-tournament.png";
 
     return {
       title: post.title,
@@ -22,11 +23,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         description: post.excerpt,
         type: "article",
         url: `/blog/${post.slug}`,
-        images: [{ url: image }]
+        images: post.cover_image_url ? [{ url: post.cover_image_url }] : undefined
       }
     };
   } catch {
-    return { title: "Article NEXY", description: "Actualite Astral4Gamer/NEXY." };
+    return { title: "Article Astral4Gamer", description: "Actualité Astral4Gamer." };
   }
 }
 
@@ -46,13 +47,11 @@ export default async function BlogDetailPage({ params }: Props) {
     <main className="min-h-screen bg-white text-[#111827]">
       <SiteHeader />
       <article className="mx-auto max-w-[920px] px-6 py-9">
-        <p className="text-xs font-black uppercase text-[#6d28d9]">Article NEXY</p>
+        <p className="text-xs font-black uppercase text-[#e52b2f]">Article Astral4Gamer</p>
         <h1 className="mt-3 text-4xl font-black leading-tight tracking-normal">{post.title}</h1>
         <p className="mt-4 text-lg leading-8 text-[#4b5563]">{post.excerpt}</p>
 
-        {post.cover_image_url ? (
-          <img src={post.cover_image_url} alt="" className="mt-7 aspect-[16/9] w-full rounded-lg object-cover" />
-        ) : null}
+        <img src={post.cover_image_url || blogHeroImage} alt="" className="mt-7 aspect-[16/9] w-full rounded-lg object-cover" />
 
         <div className="mt-5 flex flex-wrap gap-2">
           <a href={`https://wa.me/?text=${encodeURIComponent(post.title + " " + shareUrl)}`} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#25d366] px-4 text-xs font-black text-white">

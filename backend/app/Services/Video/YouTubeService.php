@@ -9,6 +9,7 @@ use App\Models\YoutubeAccount;
 use App\Models\YoutubeVideo;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -170,7 +171,7 @@ class YouTubeService
             return null;
         }
 
-        return YoutubeVideo::updateOrCreate(
+        $video = YoutubeVideo::updateOrCreate(
             ['youtube_video_id' => $videoId],
             [
                 'type' => $type,
@@ -183,6 +184,55 @@ class YouTubeService
                 'raw_payload' => $item,
             ]
         );
+
+        if ($type === 'replay') {
+            Replay::updateOrCreate(
+                ['youtube_video_id' => $videoId],
+                [
+                    'title' => $video->title,
+                    'slug' => Str::slug($video->title).'-'.$videoId,
+                    'description' => $video->description,
+                    'thumbnail_url' => $video->thumbnail_url,
+                    'duration_seconds' => $video->duration_seconds,
+                    'views_count' => $video->views_count,
+                    'category' => 'YouTube',
+                    'published_at' => $video->published_at,
+                    'hashtags' => ['YouTube', 'Replay', 'Astral4Gamer'],
+                ]
+            );
+        }
+
+        return $video;
+    }
+
+    public function recentUploads(int $maxResults = 4): Collection
+    {
+        $key = config('services.youtube.key');
+        $channelId = config('services.youtube.channel_id')
+            ?: YoutubeAccount::query()->whereNotNull('channel_id')->latest()->value('channel_id');
+
+        if (! $key || ! $channelId) {
+            return collect();
+        }
+
+        $response = Http::get('https://www.googleapis.com/youtube/v3/search', [
+            'part' => 'snippet',
+            'channelId' => $channelId,
+            'maxResults' => max(1, min($maxResults, 10)),
+            'order' => 'date',
+            'type' => 'video',
+            'key' => $key,
+        ]);
+        $this->log('search.list', $response, ['channelId' => $channelId, 'maxResults' => $maxResults]);
+        $response->throw();
+
+        return collect($response->json('items', []))
+            ->map(fn ($item) => $item['id']['videoId'] ?? null)
+            ->filter()
+            ->take($maxResults)
+            ->map(fn ($videoId) => $this->syncVideoMetadata((string) $videoId, 'replay'))
+            ->filter()
+            ->values();
     }
 
     public function createHighlightDraft(Replay $replay, array $data): array

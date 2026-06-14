@@ -1,4 +1,5 @@
 node_modules/
+.local/
 .tools/
 vendor/
 .next/
@@ -7,7 +8,14 @@ vendor/
 !.env.example
 storage/logs/*.log
 bootstrap/cache/*.php
+backend/storage/framework/cache/data/
+backend/storage/framework/views/
+frontend/.cache/
 dist/
 coverage/
 .DS_Store
 *.tsbuildinfo
+discord-bot/data/*.json
+silver-ripple-418416-9aad2e8deaee.json
+backend/storage/app/google-calendar-service-account.json
+backend/storage/app/*service-account*.json

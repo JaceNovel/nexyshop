@@ -29,9 +29,7 @@ class PublishBloggerPostJob implements ShouldQueue
         $post = BlogPost::findOrFail($this->blogPostId);
 
         try {
-            $payload = $post->blogger_post_id
-                ? $blogger->updatePost($post->blogger_post_id, $post->title, $post->content_html, config('services.blogger.labels'))
-                : $blogger->createPost($post->title, $post->content_html, config('services.blogger.labels'), false);
+            $payload = $blogger->syncPost($post, true);
 
             $post->update([
                 'blogger_post_id' => $payload['id'] ?? $post->blogger_post_id,

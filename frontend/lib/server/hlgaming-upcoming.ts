@@ -71,7 +71,7 @@ function readCredentials(): Credentials {
   const api = env.HLGAMING_API_KEY;
 
   if (!useruid || !api) {
-    throw new Error("Identifiants HL Gaming manquants côté serveur.");
+    throw new Error("Service jeux à venir indisponible.");
   }
 
   return { useruid, api };

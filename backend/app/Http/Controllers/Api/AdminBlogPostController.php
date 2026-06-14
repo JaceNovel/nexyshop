@@ -9,6 +9,7 @@ use App\Jobs\PublishBloggerPostJob;
 use App\Models\BlogPost;
 use App\Models\Replay;
 use App\Models\Tournament;
+use App\Services\AstralNotificationService;
 use App\Services\BloggerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -24,7 +25,7 @@ class AdminBlogPostController extends Controller
             ->paginate((int) $request->query('per_page', 20));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, AstralNotificationService $notifications)
     {
         $data = $request->validate([
             'title' => ['required', 'string', 'max:180'],
@@ -35,12 +36,19 @@ class AdminBlogPostController extends Controller
             'scheduled_at' => ['nullable', 'date'],
         ]);
 
-        return BlogPost::create([
+        $post = BlogPost::create([
             ...$data,
             'slug' => Str::slug($data['title']),
             'status' => $data['status'] ?? 'draft',
             'created_by' => $request->user()?->id,
         ]);
+
+        if ($post->status === 'published') {
+            $this->announcePublishedPost($post, $notifications);
+            $this->publishToBloggerIfEnabled($post);
+        }
+
+        return $post;
     }
 
     public function show(BlogPost $blogPost)
@@ -48,8 +56,9 @@ class AdminBlogPostController extends Controller
         return $blogPost->load('tournament', 'replay', 'highlight');
     }
 
-    public function update(Request $request, BlogPost $blogPost)
+    public function update(Request $request, BlogPost $blogPost, AstralNotificationService $notifications)
     {
+        $wasPublished = $blogPost->status === 'published';
         $data = $request->validate([
             'title' => ['sometimes', 'string', 'max:180'],
             'excerpt' => ['sometimes', 'string'],
@@ -64,6 +73,14 @@ class AdminBlogPostController extends Controller
         }
 
         $blogPost->update($data);
+
+        if (! $wasPublished && $blogPost->status === 'published') {
+            $this->announcePublishedPost($blogPost->refresh(), $notifications);
+        }
+
+        if ($blogPost->status === 'published') {
+            $this->publishToBloggerIfEnabled($blogPost->refresh());
+        }
 
         return $blogPost->refresh();
     }
@@ -104,5 +121,28 @@ class AdminBlogPostController extends Controller
         ]);
 
         return response()->json(['message' => 'Resume hebdomadaire cree en brouillon.', 'data' => $post]);
+    }
+
+    private function announcePublishedPost(BlogPost $post, AstralNotificationService $notifications): void
+    {
+        $notifications->broadcast([
+            'channel' => 'bell',
+            'type' => str_contains(Str::lower($post->title), 'annonce') ? 'announcement' : 'blog',
+            'title' => $post->title,
+            'body' => $post->excerpt,
+            'url' => '/blog/'.$post->slug,
+            'action_label' => 'Lire l article',
+            'action_url' => rtrim((string) config('services.google.frontend_url'), '/').'/blog/'.$post->slug,
+            'data' => ['blog_post_id' => $post->id],
+        ], true);
+    }
+
+    private function publishToBloggerIfEnabled(BlogPost $post): void
+    {
+        if (! config('services.blogger.auto_publish') || ! filled(config('services.blogger.blog_id'))) {
+            return;
+        }
+
+        PublishBloggerPostJob::dispatch($post->id);
     }
 }

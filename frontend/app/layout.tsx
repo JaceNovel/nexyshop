@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import { AppFooter } from "@/components/app-footer";
 import { Providers } from "@/components/providers";
 
 const brandLogo = "/ChatGPT_Image_28_mai_2026__20_26_02-removebg-preview.png";
@@ -49,6 +50,8 @@ const organizationJsonLd = {
   logo: `https://astral4gamer.com${brandLogo}`
 };
 
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr" suppressHydrationWarning>
@@ -57,10 +60,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
         />
-        <ClerkProvider>
-          <Providers>{children}</Providers>
+        <ClerkProvider publishableKey={clerkPublishableKey}>
+          <Providers>
+            {children}
+            <AppFooter />
+          </Providers>
         </ClerkProvider>
-        <div id="clerk-captcha" className="flex justify-center" />
       </body>
     </html>
   );

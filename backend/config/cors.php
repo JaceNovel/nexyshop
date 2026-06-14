@@ -3,7 +3,13 @@
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['*'],
-    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3000'), 'https://nexy.gg'],
+    'allowed_origins' => array_values(array_unique(array_filter([
+        env('FRONTEND_URL', 'http://localhost:3000'),
+        env('APP_FRONTEND_URL'),
+        'https://astral4gamer.com',
+        'https://www.astral4gamer.com',
+        'https://nexy.gg',
+    ]))),
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],

@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { claimRedeemCode, getPublicRedeemCodes } from "@/lib/server/hlgaming-redeem";
+import { API_BASE_URL } from "@/lib/api";
 
 export async function GET() {
   try {
     const { userId } = await auth();
+    const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+    const response = await fetch(`${API_BASE_URL}/api/freefire/redeem-codes${query}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store"
+    });
+    const payload = await response.json().catch(() => ({}));
 
-    return NextResponse.json(await getPublicRedeemCodes(userId));
+    return NextResponse.json(payload, { status: response.status });
   } catch (error) {
     return NextResponse.json(
       { enabled: false, message: error instanceof Error ? error.message : "Redeem codes indisponibles.", codes: [] },
@@ -24,8 +30,15 @@ export async function POST(request: Request) {
     }
 
     const { codeId } = await request.json().catch(() => ({ codeId: "" }));
+    const response = await fetch(`${API_BASE_URL}/api/freefire/redeem-codes/claim`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ code_id: String(codeId ?? ""), user_id: userId }),
+      cache: "no-store"
+    });
+    const payload = await response.json().catch(() => ({}));
 
-    return NextResponse.json(await claimRedeemCode(String(codeId ?? ""), userId));
+    return NextResponse.json(payload, { status: response.status });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Impossible de copier ce code.";
     const status = message.includes("déjà") ? 409 : 400;

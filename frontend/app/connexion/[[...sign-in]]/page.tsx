@@ -4,12 +4,15 @@ import { Eye, EyeOff, Gift, Lock, ShieldCheck, Trophy, User, Users } from "lucid
 import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
 import { useSignIn } from "@clerk/nextjs/legacy";
+import { API_BASE_URL, getSteamRedirectUrl } from "@/lib/api";
 
 const brandLogo = "/ChatGPT_Image_28_mai_2026__20_26_02-removebg-preview.png";
-const heroImage = "/ChatGPT Image 28 mai 2026, 15_36_59.png";
+const heroImage = "/signup-hero.png";
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const adminEmail = "adminpanel@astral.com";
 
 export default function ConnexionPage() {
-  const { isLoaded, signIn, setActive } = useSignIn();
+  const { signIn, setActive } = useSignIn();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -19,13 +22,53 @@ export default function ConnexionPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!isLoaded || !signIn) return;
+    const normalizedIdentifier = identifier.trim().toLowerCase();
 
     setIsSubmitting(true);
     setError(null);
 
+    if (normalizedIdentifier === adminEmail) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ email: normalizedIdentifier, password })
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(payload?.message || payload?.errors?.email?.[0] || "Identifiants administrateur incorrects.");
+        }
+
+        localStorage.setItem("nexy_sanctum_token", payload.token);
+        localStorage.setItem("astral_admin_user", JSON.stringify(payload.user));
+        window.location.href = "/admin";
+        return;
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : "Connexion administrateur impossible.");
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    if (!clerkPublishableKey) {
+      setError("Clerk n'est pas configure sur le serveur. Ajoute NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY dans frontend/.env.local puis rebuild.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!signIn) {
+      setError("Clerk n'est pas prêt côté navigateur. Vérifie le domaine astral4gamer.com dans Clerk et recharge la page.");
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      const result = await signIn.create({ identifier, password });
+      const result = await signIn.create({ identifier: identifier.trim(), password });
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
@@ -41,8 +84,16 @@ export default function ConnexionPage() {
     }
   }
 
-  async function handleSocialSignIn(strategy: "oauth_google" | "oauth_facebook" | "oauth_discord") {
-    if (!isLoaded || !signIn) return;
+  async function handleSocialSignIn(strategy: "oauth_google" | "oauth_discord") {
+    if (!clerkPublishableKey) {
+      setError("Clerk n'est pas configure sur le serveur. Ajoute NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY dans frontend/.env.local puis rebuild.");
+      return;
+    }
+
+    if (!signIn) {
+      setError("Clerk n'est pas prêt côté navigateur. Vérifie le domaine astral4gamer.com dans Clerk et recharge la page.");
+      return;
+    }
 
     setError(null);
 
@@ -54,6 +105,18 @@ export default function ConnexionPage() {
       });
     } catch (requestError) {
       setError(getClerkError(requestError));
+    }
+  }
+
+  async function handleSteamSignIn() {
+    setError(null);
+
+    try {
+      const token = localStorage.getItem("nexy_sanctum_token");
+      const payload = await getSteamRedirectUrl(token);
+      window.location.href = payload.url;
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Connexion Steam impossible pour le moment.");
     }
   }
 
@@ -163,7 +226,7 @@ export default function ConnexionPage() {
 
               {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-[12px] font-semibold text-[#b91c1c]">{error}</p> : null}
 
-              <button disabled={!isLoaded || isSubmitting} type="submit" className="h-11 w-full rounded-lg bg-[#ff1f2f] text-[13px] font-black text-white shadow-[0_12px_26px_rgba(255,31,47,.18)] transition hover:bg-[#e51b2a] disabled:cursor-not-allowed disabled:opacity-70">
+              <button disabled={isSubmitting} type="submit" className="h-11 w-full rounded-lg bg-[#ff1f2f] text-[13px] font-black text-white shadow-[0_12px_26px_rgba(255,31,47,.18)] transition hover:bg-[#e51b2a] disabled:cursor-not-allowed disabled:opacity-70">
                 {isSubmitting ? "Connexion..." : "Se connecter"}
               </button>
             </form>
@@ -174,11 +237,14 @@ export default function ConnexionPage() {
               <span className="h-px flex-1 bg-[#e5e7eb]" />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <SocialButton label="Google" provider="google" onClick={() => handleSocialSignIn("oauth_google")} />
-              <SocialButton label="Facebook" provider="facebook" onClick={() => handleSocialSignIn("oauth_facebook")} />
               <SocialButton label="Discord" provider="discord" onClick={() => handleSocialSignIn("oauth_discord")} />
             </div>
+            <button type="button" onClick={handleSteamSignIn} className="mt-2 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#1b2838] bg-[#171a21] px-3 text-[12px] font-black text-white transition hover:bg-[#0b1118]">
+              <SteamIcon />
+              Se connecter avec Steam
+            </button>
 
             <p className="mt-4 flex items-center justify-center gap-2 text-[11px] font-medium text-[#8a93a3]">
               <ShieldCheck className="h-3.5 w-3.5" />
@@ -235,6 +301,14 @@ function ProviderIcon({ provider }: { provider: "google" | "facebook" | "discord
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
       <path fill="#5865F2" d="M20.32 4.37A19.79 19.79 0 0 0 15.36 2.8a13.78 13.78 0 0 0-.64 1.32 18.27 18.27 0 0 0-5.44 0 12.64 12.64 0 0 0-.65-1.32 19.74 19.74 0 0 0-4.96 1.57C.54 9.06-.32 13.63.1 18.13a19.93 19.93 0 0 0 6.08 3.07 14.6 14.6 0 0 0 1.3-2.1 12.91 12.91 0 0 1-2.05-.98c.17-.13.34-.26.5-.4a14.2 14.2 0 0 0 12.14 0c.17.14.33.27.5.4-.65.39-1.33.72-2.06.98.38.74.82 1.45 1.3 2.1a19.86 19.86 0 0 0 6.09-3.07c.5-5.22-.86-9.75-3.58-13.76ZM8.02 15.36c-1.18 0-2.16-1.09-2.16-2.42s.95-2.42 2.16-2.42c1.2 0 2.18 1.1 2.16 2.42 0 1.33-.96 2.42-2.16 2.42Zm7.96 0c-1.18 0-2.16-1.09-2.16-2.42s.95-2.42 2.16-2.42c1.2 0 2.18 1.1 2.16 2.42 0 1.33-.96 2.42-2.16 2.42Z" />
+    </svg>
+  );
+}
+
+function SteamIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M12 0a12 12 0 0 0-12 11.54l6.44 2.66a3.39 3.39 0 0 1 1.91-.58h.19l2.86-4.15v-.06a4.55 4.55 0 1 1 4.55 4.55h-.1l-4.07 2.91v.16a3.44 3.44 0 0 1-6.79.78L.38 15.9A12 12 0 1 0 12 0Zm-3.63 18.74-1.47-.61a2.58 2.58 0 0 0 1.42 1.18 2.55 2.55 0 0 0 1.95-.16 2.57 2.57 0 0 0 1.02-3.48 2.57 2.57 0 0 0-3.3-1.15l1.52.63a1.9 1.9 0 1 1-1.14 3.59Zm7.58-6.3a3.03 3.03 0 1 0 0-6.06 3.03 3.03 0 0 0 0 6.06Zm0-.75a2.28 2.28 0 1 1 0-4.56 2.28 2.28 0 0 1 0 4.56Z" />
     </svg>
   );
 }

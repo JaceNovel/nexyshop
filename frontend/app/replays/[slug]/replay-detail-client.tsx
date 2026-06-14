@@ -20,11 +20,19 @@ import {
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { YouTubePlayer } from "@/components/youtube-player";
-import type { Replay, ReplayMoment } from "@/lib/api";
+import {
+  likeYoutubeVideo,
+  shareCommunityClip,
+  subscribeYoutubeChannel,
+  trackYoutubeShare,
+  type Replay,
+  type ReplayMoment
+} from "@/lib/api";
 import { formatDate, formatDuration, formatViews } from "@/lib/video-format";
 
 export function ReplayDetailClient({ replay, recommended }: { replay: Replay; recommended: Replay[] }) {
   const [seekTo, setSeekTo] = useState<number | null>(null);
+  const [actionStatus, setActionStatus] = useState("");
   const videoId = replay.youtube_video_id || "M7lc1UVf-VE";
   const moments = getDisplayMoments(replay);
   const recommendedVideos = recommended.length ? recommended : [replay];
@@ -63,22 +71,25 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
                 <p className="flex items-center gap-1 text-[15px] font-black">NEXY Esport <span className="grid h-4 w-4 place-items-center rounded-full bg-[#111827] text-[10px] text-white">✓</span></p>
                 <p className="text-[12px] font-semibold text-[#6b7280]">15.2K abonnés</p>
               </div>
-              <button className="inline-flex h-9 items-center gap-2 rounded-md bg-[#dc2626] px-4 text-[12px] font-black text-white transition hover:bg-[#b91c1c]" type="button">
+              <button onClick={() => runCommunityAction(() => subscribeYoutubeChannel(readToken()), setActionStatus)} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#dc2626] px-4 text-[12px] font-black text-white transition hover:bg-[#b91c1c]" type="button">
                 <Bell className="h-4 w-4" /> S'abonner
               </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <ActionButton icon={<ThumbsUp className="h-4 w-4" />} label="1.2K" />
+              <ActionButton icon={<ThumbsUp className="h-4 w-4" />} label="J'aime" onClick={() => runCommunityAction(() => likeYoutubeVideo(readToken(), videoId), setActionStatus)} />
               <ActionButton icon={<ThumbsDown className="h-4 w-4" />} label="45" />
-              <ActionButton icon={<Share2 className="h-4 w-4" />} label="Partager" />
-              <ActionButton icon={<Download className="h-4 w-4" />} label="Télécharger" />
+              <ActionButton icon={<Share2 className="h-4 w-4" />} label="Partager" onClick={() => shareReplay(videoId, replay.title, setActionStatus)} />
+              <ActionButton icon={<Download className="h-4 w-4" />} label="Publier clip" onClick={() => runCommunityAction(() => shareCommunityClip(readToken(), { replay_id: replay.id, youtube_video_id: videoId, title: replay.title, message: "Clip issu d'un live passe Astral4Gamer." }), setActionStatus)} />
               <ActionButton icon={<Bookmark className="h-4 w-4" />} label="Enregistrer" />
               <button className="grid h-9 w-9 place-items-center rounded-full bg-[#f3f4f6] text-[#111827]" type="button" aria-label="Plus d'options">
                 <MoreHorizontal className="h-5 w-5" />
               </button>
             </div>
           </div>
+          {actionStatus ? (
+            <div className="mt-3 rounded-lg bg-[#f8fafc] px-4 py-3 text-[13px] font-semibold text-[#334155]">{actionStatus}</div>
+          ) : null}
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <section className="rounded-lg border border-[#e5e7eb] bg-white p-5">
@@ -184,13 +195,39 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
   );
 }
 
-function ActionButton({ icon, label }: { icon: ReactNode; label: string }) {
+function ActionButton({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
   return (
-    <button className="inline-flex h-9 items-center gap-2 rounded-full bg-[#f3f4f6] px-4 text-[12px] font-black text-[#111827] transition hover:bg-[#fee2e2] hover:text-[#dc2626]" type="button">
+    <button onClick={onClick} className="inline-flex h-9 items-center gap-2 rounded-full bg-[#f3f4f6] px-4 text-[12px] font-black text-[#111827] transition hover:bg-[#fee2e2] hover:text-[#dc2626]" type="button">
       {icon}
       {label}
     </button>
   );
+}
+
+function readToken() {
+  return typeof window === "undefined" ? null : localStorage.getItem("nexy_sanctum_token");
+}
+
+async function runCommunityAction(action: () => Promise<{ message?: string; status?: string }>, setActionStatus: (value: string) => void) {
+  try {
+    const result = await action();
+    setActionStatus(result.message ?? (result.status === "liked" ? "Like YouTube envoyé." : result.status === "subscribed" ? "Abonnement YouTube confirmé." : "Action envoyée."));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Action impossible.";
+    setActionStatus(message.includes("Reconnecte Google") ? `${message} Va dans Connexion Google puis réessaie.` : message);
+  }
+}
+
+async function shareReplay(videoId: string, title: string, setActionStatus: (value: string) => void) {
+  const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  if (navigator.share) {
+    await navigator.share({ title, url: watchUrl }).catch(() => undefined);
+  } else {
+    await navigator.clipboard?.writeText(watchUrl).catch(() => undefined);
+  }
+
+  await runCommunityAction(() => trackYoutubeShare(readToken(), videoId, "web"), setActionStatus);
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {

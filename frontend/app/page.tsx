@@ -4,140 +4,361 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Footer } from "@/components/site-footer";
+import { type SyntheticEvent, useEffect, useState } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { type CatalogProduct, getCatalogProducts } from "@/lib/api";
 
 const gameImages = {
-  freefire: "https://media.rawg.io/media/resize/640/-/screenshots/96a/96ab17437e722c8e22240923dfdfcdd0_ftUmkIh.jpg",
-  pubg: "https://media.rawg.io/media/resize/640/-/screenshots/a83/a830c3a3f3f4c9b6cc74924cd42b89a0.jpg",
+  astral: "/icon.svg",
+  freefire: "/unnamed.png",
+  pubg: "/pubg-1920x1080-wallpaper-md5gr1zzjd6ic2va.jpg",
   codm: "https://media.rawg.io/media/resize/640/-/screenshots/b59/b59e44204d8af92133ea0b67af45a04c_hS4tgMe.jpg",
   mobileLegends: "https://media.rawg.io/media/resize/640/-/screenshots/ca8/ca8a011899a0743ee717c0a2f056f0af.jpg",
-  fortnite: "https://media.rawg.io/media/resize/640/-/screenshots/c28/c286227823231c426a88aa873cf1b8d6.jpg",
+  fortnite: "/the-death-star-sabotage-event-for-fortnite-begins-on-july-7-cover684382a44e794.jpg",
   brawl: "https://media.rawg.io/media/resize/640/-/screenshots/ffa/ffa1cac1582ab3a81cf77e98435101ac.jpg",
   valorant: "https://media.rawg.io/media/resize/640/-/screenshots/4e2/4e2b6b1e7f0f3d3d3b5573d0ab826d6e.jpg",
-  genshin: "https://media.rawg.io/media/resize/640/-/screenshots/3b7/3b7f00f2f47ed0f8c3c31ef3dbd4adc6.jpg"
-};
-
-const brandLogos = {
-  freefire: "https://www.logo.wine/a/logo/Garena_Free_Fire/Garena_Free_Fire-Logo.wine.svg",
-  pubg: "https://commons.wikimedia.org/wiki/Special:FilePath/PUBG%20Mobile%20simple%20logo%20black.svg",
-  codm: "https://commons.wikimedia.org/wiki/Special:FilePath/Call%20of%20Duty%20Mobile%202023%20logo.svg",
-  genshin: "https://commons.wikimedia.org/wiki/Special:FilePath/Genshin%20Impact%20wordmark.svg",
-  honkai: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Honkai_Star_Rail_logo.png",
-  mobileLegends: "https://commons.wikimedia.org/wiki/Special:FilePath/Mobile%20Legends%20Logo.webp",
-  valorant: "https://commons.wikimedia.org/wiki/Special:FilePath/Valorant%20logo.svg",
-  playstation: "https://commons.wikimedia.org/wiki/Special:FilePath/Playstation%20logo%20colour.svg",
-  exitlag: "https://www.exitlag.com/favicon.ico",
-  gearup: "https://www.gearupbooster.com/favicon.ico"
+  genshin: "https://media.rawg.io/media/resize/640/-/screenshots/3b7/3b7f00f2f47ed0f8c3c31ef3dbd4adc6.jpg",
+  apple: "https://cdn.simpleicons.org/apple/111111",
+  amazon: "https://cdn.simpleicons.org/amazon/FF9900",
+  discord: "https://cdn.simpleicons.org/discord/5865F2",
+  googlePlay: "https://cdn.simpleicons.org/googleplay/34A853",
+  netflix: "https://cdn.simpleicons.org/netflix/E50914",
+  nintendo: "https://cdn.simpleicons.org/nintendo/E60012",
+  playstation: "https://cdn.simpleicons.org/playstation/003791",
+  razer: "https://cdn.simpleicons.org/razer/00FF00",
+  steam: "https://cdn.simpleicons.org/steam/171A21",
+  xbox: "https://cdn.simpleicons.org/xbox/107C10"
 };
 
 const bannerSlides = [
   {
+    key: "free-fire",
     title: "Free Fire Diamonds",
     text: "Recharge tes diamants en quelques secondes et prepare ton prochain rush.",
     cta: "Acheter maintenant",
-    href: "/product/free-fire",
+    fallbackHref: "/category/top-up?q=free%20fire",
+    searchTerms: ["free fire", "garena free fire", "diamonds free fire"],
     image: "https://wallpapercave.com/wp/wp7536967.jpg",
     gradient: "from-[#0f5132]/25 via-[#1f8f75]/18 to-[#38bdf8]/12"
   },
   {
+    key: "call-of-duty",
     title: "CODM CP Instant",
     text: "Achete tes CP Call of Duty Mobile et debloque skins, passes et armes premium.",
     cta: "Acheter maintenant",
-    href: "/product/codm",
-    image: "https://images.wallpapersden.com/image/download/call-of-duty-warzone-mobile-season-3_bmdqbW6UmZqaraWkpJRmbmdlrWZlbWU.jpg",
+    fallbackHref: "/category/top-up?q=call%20of%20duty",
+    searchTerms: ["call of duty mobile", "cod mobile", "codm", "cp call of duty"],
+    image: "https://www.theloadout.com/wp-content/sites/theloadout/2022/09/call-of-duty-next-start-time-how-to-watch.jpg",
     gradient: "from-[#111827]/18 via-[#0f766e]/14 to-[#0ea5e9]/10"
   },
   {
+    key: "netflix",
     title: "Netflix Gift Card",
     text: "Recharge ton divertissement avec des cartes cadeaux Netflix pretes a utiliser.",
     cta: "Acheter maintenant",
-    href: "/product/netflix",
-    image: "https://m.media-amazon.com/images/I/B1cqB8zl+NS.jpg",
+    fallbackHref: "/category/gift-cards?q=netflix",
+    searchTerms: ["netflix", "netflix gift card", "netflix card"],
+    image: "https://www.logoai.com/uploads/articles/2025/04/23/banner-1712644978-1745388914.jpg",
     gradient: "from-[#141414]/18 via-[#b91c1c]/16 to-[#ef4444]/10"
   },
   {
+    key: "pubg",
     title: "PUBG Mobile UC",
     text: "Obtiens tes UC PUBG Mobile rapidement pour skins, crates et royale pass.",
     cta: "Acheter maintenant",
-    href: "/product/pubg-mobile",
-    image: "https://images.wallpapersden.com/image/download/pubg-mobile-4k_bG5tbGmUmZqaraWkpJRmbmdlrWZlbWU.jpg",
+    fallbackHref: "/category/top-up?q=pubg",
+    searchTerms: ["pubg mobile", "pubg mobile uc", "pubg"],
+    image: "https://wallpapers.com/images/hd/pubg-2020-store-battle-wix5bktrn0oawyvj.jpg",
     gradient: "from-[#134e4a]/20 via-[#0f766e]/16 to-[#f59e0b]/12"
   }
 ];
 
-type GameCategoryLink = {
-  abbr: string;
-  label: string;
-  image: string;
-  href: string;
-};
-
-const categories = [
-  { abbr: "CODM", label: "Call of Duty Mobile", image: brandLogos.codm, href: "/product/codm" },
-  { abbr: "FF", label: "Free Fire", image: brandLogos.freefire, href: "/product/free-fire" },
-  { abbr: "PUBG", label: "PUBG Mobile", image: brandLogos.pubg, href: "/product/pubg-mobile" },
-  { abbr: "GI", label: "Genshin Impact", image: brandLogos.genshin, href: "/product/genshin-impact" },
-  { abbr: "HSR", label: "Honkai: Star Rail", image: brandLogos.honkai, href: "/product/honkai-star-rail" },
-  { abbr: "ML", label: "Mobile Legends", image: brandLogos.mobileLegends, href: "/product/mobile-legends" },
-  { abbr: "LD", label: "Love and Deepspace", image: gameImages.fortnite, href: "/product/love-and-deepspace" },
-  { abbr: "HOK", label: "Honor of Kings", image: gameImages.mobileLegends, href: "/product/honor-of-kings" },
-  { abbr: "ZZZ", label: "Zenless Zone Zero", image: gameImages.valorant, href: "/product/zenless-zone-zero" },
-  { abbr: "GB", label: "GearUp Booster", image: brandLogos.gearup, href: "/product/gearup-booster" },
-  { abbr: "EX", label: "Exitlag", image: brandLogos.exitlag, href: "/product/exitlag" },
-  { abbr: "VAL", label: "Valorant", image: brandLogos.valorant, href: "/product/valorant" },
-  { abbr: "PS", label: "PlayStation", image: brandLogos.playstation, href: "/product/playstation" }
-] satisfies GameCategoryLink[];
-
-const promos = [
+const catalogShortcuts = [
   {
-    title: "Free Fire Diamonds",
-    subtitle: "Bonus instant +8%",
-    href: "/product/free-fire",
-    logo: brandLogos.freefire,
-    image: "https://wallpapercave.com/wp/wp7536967.jpg",
-    accent: "from-[#fff7ed] via-white to-[#dbeafe]"
+    key: "codm",
+    label: "Call of Duty Mobile",
+    fallbackHref: "/category/top-up?q=call%20of%20duty",
+    searchTerms: ["call of duty mobile", "cod mobile", "codm", "cp call of duty"],
+    image: "https://media.rawg.io/media/resize/640/-/screenshots/b59/b59e44204d8af92133ea0b67af45a04c_hS4tgMe.jpg"
   },
   {
-    title: "PUBG Mobile UC",
-    subtitle: "Livraison auto rapide",
-    href: "/product/pubg-mobile",
-    logo: brandLogos.pubg,
-    image: "https://images.wallpapersden.com/image/download/pubg-mobile-4k_bG5tbGmUmZqaraWkpJRmbmdlrWZlbWU.jpg",
-    accent: "from-[#f4f4f5] via-[#fde68a] to-[#111827]"
+    key: "free-fire",
+    label: "Free Fire",
+    fallbackHref: "/category/top-up?q=free%20fire",
+    searchTerms: ["free fire", "garena free fire", "diamonds free fire"],
+    image: gameImages.freefire
   },
   {
-    title: "Valorant Points",
-    subtitle: "Code digital securise",
-    href: "/product/valorant",
-    logo: brandLogos.valorant,
-    image: gameImages.valorant,
-    accent: "from-[#fee2e2] via-white to-[#fecaca]"
+    key: "pubg",
+    label: "PUBG Mobile",
+    fallbackHref: "/category/top-up?q=pubg",
+    searchTerms: ["pubg mobile", "pubg mobile uc", "pubg"],
+    image: gameImages.pubg
   },
   {
-    title: "Genshin Crystals",
-    subtitle: "Recharge globale",
-    href: "/product/genshin-impact",
-    logo: brandLogos.genshin,
-    image: gameImages.genshin,
-    accent: "from-[#eff6ff] via-white to-[#fae8ff]"
+    key: "genshin",
+    label: "Genshin Impact",
+    fallbackHref: "/category/top-up?q=genshin",
+    searchTerms: ["genshin impact", "genesis crystals genshin", "genshin"],
+    image: gameImages.genshin
+  },
+  {
+    key: "honkai",
+    label: "Honkai: Star Rail",
+    fallbackHref: "/category/top-up?q=honkai",
+    searchTerms: ["honkai star rail", "honkai"],
+    image: "https://media.rawg.io/media/resize/640/-/screenshots/55d/55d3c9f5ddf77405c182621b929956ea.jpg"
+  },
+  {
+    key: "mobile-legends",
+    label: "Mobile Legends",
+    fallbackHref: "/category/top-up?q=mobile%20legends",
+    searchTerms: ["mobile legends", "mobile legends diamonds"],
+    image: gameImages.mobileLegends
+  },
+  {
+    key: "love-and-deepspace",
+    label: "Love and Deepspace",
+    fallbackHref: "/category/top-up?q=love%20and%20deepspace",
+    searchTerms: ["love and deepspace", "love deepspace"],
+    image: "https://media.rawg.io/media/resize/640/-/screenshots/4b9/4b91d51a67ca20d0c7645467c5977200.jpg"
+  },
+  {
+    key: "honor-of-kings",
+    label: "Honor of Kings",
+    fallbackHref: "/category/top-up?q=honor%20of%20kings",
+    searchTerms: ["honor of kings"],
+    image: "https://media.rawg.io/media/resize/640/-/screenshots/826/826da47d8e91bfaf1fa8d40ebb90e40c.jpg"
+  },
+  {
+    key: "zenless-zone-zero",
+    label: "Zenless Zone Zero",
+    fallbackHref: "/category/top-up?q=zenless",
+    searchTerms: ["zenless zone zero", "zenless"],
+    image: "https://media.rawg.io/media/resize/640/-/screenshots/b2a/b2a11a759dc222a112276b0ce69d08cc.jpg"
+  },
+  {
+    key: "gearup",
+    label: "GearUp Booster",
+    fallbackHref: "/category/top-up?q=gearup",
+    searchTerms: ["gearup booster", "gearup"],
+    image: "https://www.gearupbooster.com/favicon.ico"
+  },
+  {
+    key: "exitlag",
+    label: "Exitlag",
+    fallbackHref: "/category/top-up?q=exitlag",
+    searchTerms: ["exitlag"],
+    image: "https://www.exitlag.com/favicon.ico"
+  },
+  {
+    key: "valorant",
+    label: "Valorant",
+    fallbackHref: "/category/top-up?q=valorant",
+    searchTerms: ["valorant points", "valorant"],
+    image: gameImages.valorant
+  },
+  {
+    key: "playstation",
+    label: "PlayStation",
+    fallbackHref: "/category/gift-cards?q=playstation",
+    searchTerms: ["playstation network", "playstation", "psn"],
+    image: gameImages.playstation
   }
 ];
 
+function productIdentity(product: Pick<CatalogProduct, "name" | "game" | "category">) {
+  return `${product.name} ${product.game} ${product.category ?? ""}`.toLowerCase();
+}
+
+function fallbackImageForProduct(product: Pick<CatalogProduct, "name" | "game" | "category">) {
+  const text = productIdentity(product);
+
+  if (text.includes("apple") || text.includes("itunes")) return gameImages.apple;
+  if (text.includes("amazon")) return gameImages.amazon;
+  if (text.includes("discord") || text.includes("nitro")) return gameImages.discord;
+  if (text.includes("google play")) return gameImages.googlePlay;
+  if (text.includes("netflix")) return gameImages.netflix;
+  if (text.includes("nintendo")) return gameImages.nintendo;
+  if (text.includes("playstation") || text.includes("psn")) return gameImages.playstation;
+  if (text.includes("razer")) return gameImages.razer;
+  if (text.includes("steam")) return gameImages.steam;
+  if (text.includes("xbox")) return gameImages.xbox;
+  if (text.includes("free fire") || text.includes("garena")) return gameImages.freefire;
+  if (text.includes("call of duty") || text.includes("cod")) return gameImages.codm;
+  if (text.includes("mobile legend")) return gameImages.mobileLegends;
+  if (text.includes("fortnite")) return gameImages.fortnite;
+  if (text.includes("brawl")) return gameImages.brawl;
+  if (text.includes("valorant")) return gameImages.valorant;
+  if (text.includes("genshin")) return gameImages.genshin;
+  if (text.includes("pubg")) return gameImages.pubg;
+  if (text.includes("exitlag") || text.includes("gearup") || text.includes("wtfast") || text.includes("ping")) return gameImages.astral;
+  if (text.includes("gift") || text.includes("card")) return gameImages.astral;
+
+  return gameImages.astral;
+}
+
+function bestProductImage(product: Pick<CatalogProduct, "name" | "game" | "category" | "image_url">) {
+  const imageUrl = product.image_url?.trim();
+  const isPubgProduct = productIdentity(product).includes("pubg");
+
+  if (imageUrl && (!imageUrl.toLowerCase().includes("pubg") || isPubgProduct)) {
+    return imageUrl;
+  }
+
+  return fallbackImageForProduct(product);
+}
+
+function preventBrokenImage(event: SyntheticEvent<HTMLImageElement>, fallback = gameImages.astral) {
+  const image = event.currentTarget;
+
+  if (image.dataset.fallbackApplied === "true") {
+    return;
+  }
+
+  image.dataset.fallbackApplied = "true";
+  image.src = fallback;
+}
+
+function bestProductPrice(product: CatalogProduct) {
+  const variationPrices = (product.variations ?? [])
+    .map((variation) => Number(variation.price))
+    .filter((price) => price > 0);
+  const price = Number(product.price) > 0 ? Number(product.price) : Math.min(...variationPrices);
+
+  if (!Number.isFinite(price) || price <= 0) {
+    return "Prix bientôt";
+  }
+
+  const prefix = variationPrices.length > 1 || (product.price_range?.min && product.price_range?.max && product.price_range.min !== product.price_range.max)
+    ? "Dès "
+    : "";
+
+  return `${prefix}${new Intl.NumberFormat("fr-FR").format(price)} ${product.currency}`;
+}
+
+function productMatchesTerms(product: CatalogProduct, terms: string[]) {
+  const text = productIdentity(product);
+
+  return terms.some((term) => text.includes(term.toLowerCase()));
+}
+
+function findBestHeroProduct(products: CatalogProduct[], terms: string[]) {
+  const matches = products.filter((product) => productMatchesTerms(product, terms));
+
+  return matches.find((product) => product.variations?.length)
+    ?? matches.find((product) => Number(product.price) > 0 || Number(product.price_range?.min) > 0)
+    ?? matches[0];
+}
+
+const homeProductCount = 20;
+const homeProductRotationMs = 2 * 60 * 1000;
+const homeProductPageKey = "astral_home_product_page";
+
+function randomCatalogPage(lastPage: number, totalProducts: number, previousPage: number) {
+  const lastPageIsFull = totalProducts > 0 && totalProducts % homeProductCount === 0;
+  const lastFullPage = lastPage > 1 && !lastPageIsFull ? lastPage - 1 : lastPage;
+  if (lastFullPage <= 1) return 1;
+
+  let page = Math.floor(Math.random() * lastFullPage) + 1;
+  if (page === previousPage) page = (page % lastFullPage) + 1;
+
+  return page;
+}
+
 export default function Home() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [bannerLinks, setBannerLinks] = useState<Record<string, string>>({});
+  const [shortcutProducts, setShortcutProducts] = useState<Record<string, CatalogProduct>>({});
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "empty" | "error">("loading");
   const [activeSlide, setActiveSlide] = useState(0);
 
   useEffect(() => {
-    getCatalogProducts(32)
-      .then((response) => {
+    let cancelled = false;
+
+    async function loadRotatingProducts() {
+      try {
+        const firstPage = await getCatalogProducts(homeProductCount, { page: 1 });
+        const lastPage = Math.max(1, Number(firstPage.meta?.last_page ?? 1));
+        const totalProducts = Math.max(firstPage.data.length, Number(firstPage.meta?.total ?? firstPage.data.length));
+        const previousPage = Number(window.sessionStorage.getItem(homeProductPageKey) ?? 0);
+        const selectedPage = randomCatalogPage(lastPage, totalProducts, previousPage);
+        const response = selectedPage === 1
+          ? firstPage
+          : await getCatalogProducts(homeProductCount, { page: selectedPage });
+
+        if (cancelled) return;
+
+        window.sessionStorage.setItem(homeProductPageKey, String(selectedPage));
         setProducts(response.data);
         setCatalogStatus(response.data.length ? "ready" : "empty");
+      } catch {
+        if (!cancelled) setCatalogStatus("error");
+      }
+    }
+
+    void loadRotatingProducts();
+    const timer = window.setInterval(loadRotatingProducts, homeProductRotationMs);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const bannerRequests = Promise.all(
+      bannerSlides.map(async (slide) => {
+        for (const term of slide.searchTerms) {
+          try {
+            const response = await getCatalogProducts(12, { q: term });
+            const product = findBestHeroProduct(response.data, slide.searchTerms);
+
+            if (product) {
+              return [slide.key, `/product/${product.id}`] as const;
+            }
+          } catch {
+            // Keep the static fallback if the catalog search is unavailable.
+          }
+        }
+
+        return [slide.key, slide.fallbackHref] as const;
       })
-      .catch(() => setCatalogStatus("error"));
+    ).then((entries) => {
+      if (!cancelled) setBannerLinks(Object.fromEntries(entries));
+    });
+
+    const shortcutRequests = Promise.all(
+      catalogShortcuts.map(async (shortcut) => {
+        for (const term of shortcut.searchTerms) {
+          try {
+            const response = await getCatalogProducts(12, { q: term });
+            const product = findBestHeroProduct(response.data, shortcut.searchTerms);
+
+            if (product) {
+              return [shortcut.key, product] as const;
+            }
+          } catch {
+            // Keep the static shortcut if the catalog search is unavailable.
+          }
+        }
+
+        return [shortcut.key, null] as const;
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+
+      setShortcutProducts(Object.fromEntries(entries.filter((entry): entry is readonly [string, CatalogProduct] => Boolean(entry[1]))));
+    });
+
+    void bannerRequests;
+    void shortcutRequests;
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -148,38 +369,12 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const catalogCategories = useMemo(() => {
-    const gamesByName = new Map<string, CatalogProduct>();
-
-    products.forEach((product) => {
-      const name = product.game || product.name;
-
-      if (!gamesByName.has(name)) {
-        gamesByName.set(name, product);
-      }
-    });
-
-    return Array.from(gamesByName.entries()).slice(0, 14).map(([name, product]) => ({
-      abbr: name
-        .split(/\s+/)
-        .map((word) => word[0])
-        .join("")
-        .slice(0, 4)
-        .toUpperCase(),
-      label: name,
-      image: product.image_url || gameImages.pubg,
-      href: `/product/${product.id}`
-    }));
-  }, [products]);
-
-  const displayCategories = catalogCategories.length ? catalogCategories : categories;
-
   return (
     <main className="min-h-screen bg-white text-[#06101f]">
       <SiteHeader />
 
-      <section className="mx-auto max-w-[1586px] px-6 pt-16">
-        <div className="relative h-[336px] overflow-hidden rounded-[18px] bg-[#145d3f] text-white shadow-[0_1px_2px_rgba(16,24,40,.08)]">
+      <section className="mx-auto max-w-[1586px] px-3 pt-3 sm:px-6 md:pt-10 lg:pt-16">
+        <div className="relative h-[210px] overflow-hidden rounded-lg bg-[#145d3f] text-white shadow-[0_1px_2px_rgba(16,24,40,.08)] sm:h-[260px] md:h-[336px] md:rounded-[18px]">
           {bannerSlides.map((slide, index) => (
             <div
               key={slide.title}
@@ -189,23 +384,23 @@ export default function Home() {
               <img src={slide.image} alt={slide.title} className="absolute inset-0 h-full w-full object-cover" />
               <div className={`absolute inset-0 bg-gradient-to-r ${slide.gradient}`} />
               <div className="absolute inset-0 bg-gradient-to-r from-black/20 via-black/0 to-transparent" />
-              <div className="relative z-10 flex h-full max-w-[760px] flex-col justify-center pl-[156px]">
-                <p className="mb-3 text-sm font-black uppercase tracking-[.18em] text-white/80">Recharge officielle Astral4Gamer</p>
-                <h1 className="text-[44px] font-black leading-[1.05] tracking-[-.4px]">{slide.title}</h1>
-                <p className="mt-4 max-w-[470px] text-[21px] font-medium leading-7 text-white/88">{slide.text}</p>
-                <a href={slide.href} className="interactive-button mt-7 inline-flex h-11 w-[188px] items-center justify-center gap-2 rounded bg-white text-[14px] font-black text-[#111827] shadow-sm">
+              <div className="relative z-10 flex h-full max-w-[760px] flex-col justify-center px-5 sm:px-8 md:pl-[96px] lg:pl-[156px]">
+                <p className="mb-2 hidden text-xs font-black uppercase tracking-[.14em] text-white/80 sm:block md:mb-3 md:text-sm md:tracking-[.18em]">Recharge officielle Astral4Gamer</p>
+                <h1 className="max-w-[260px] text-[26px] font-black leading-[1.05] tracking-normal sm:max-w-[430px] sm:text-[34px] md:text-[44px]">{slide.title}</h1>
+                <p className="mt-2 line-clamp-2 max-w-[290px] text-[13px] font-medium leading-5 text-white/88 sm:max-w-[420px] sm:text-base md:mt-4 md:max-w-[470px] md:text-[21px] md:leading-7">{slide.text}</p>
+                <a href={bannerLinks[slide.key] ?? slide.fallbackHref} className="interactive-button mt-4 inline-flex h-10 w-[156px] items-center justify-center gap-1 rounded bg-white text-[12px] font-black text-[#111827] shadow-sm md:mt-7 md:h-11 md:w-[188px] md:gap-2 md:text-[14px]">
                   {slide.cta} <ChevronRight className="h-4 w-4" />
                 </a>
               </div>
             </div>
           ))}
-          <button onClick={() => setActiveSlide((activeSlide - 1 + bannerSlides.length) % bannerSlides.length)} className="absolute left-8 top-1/2 z-20 -translate-y-1/2 text-white/90">
-            <ChevronLeft className="h-9 w-9 stroke-[1.6]" />
+          <button onClick={() => setActiveSlide((activeSlide - 1 + bannerSlides.length) % bannerSlides.length)} className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 sm:left-4 md:left-8">
+            <ChevronLeft className="h-7 w-7 stroke-[1.6] md:h-9 md:w-9" />
           </button>
-          <button onClick={() => setActiveSlide((activeSlide + 1) % bannerSlides.length)} className="absolute right-8 top-1/2 z-20 -translate-y-1/2 text-white/90">
-            <ChevronRight className="h-9 w-9 stroke-[1.6]" />
+          <button onClick={() => setActiveSlide((activeSlide + 1) % bannerSlides.length)} className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 sm:right-4 md:right-8">
+            <ChevronRight className="h-7 w-7 stroke-[1.6] md:h-9 md:w-9" />
           </button>
-          <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 gap-2">
+          <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-1.5 md:bottom-5 md:gap-2">
             {bannerSlides.map((slide, index) => (
               <button
                 key={slide.title}
@@ -218,68 +413,65 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="categories" className="mx-auto max-w-[1586px] px-6 pt-12">
-        <div className="rounded-xl bg-[#f6f6f7] px-8 py-4">
-          <div className="grid grid-cols-13">
-            {displayCategories.slice(0, 13).map(({ abbr, label, image, href }) => (
-              <a key={label} className="soft-pop flex min-w-0 flex-col items-center justify-start border-r border-[#d9d9dc] px-2 last:border-r-0" href={href}>
-                {image ? (
-                  <img src={image} alt={label} className="h-16 w-16 rounded-xl object-contain" />
-                ) : (
-                  <span className="grid h-16 w-16 place-items-center rounded-xl bg-[#eaf2ff] text-sm font-black text-[#0b55d9]">{abbr}</span>
-                )}
-                <span className="mt-2 block w-full truncate text-center text-[14px] leading-5 text-black">{label}</span>
-              </a>
-            ))}
+      <section className="mx-auto max-w-[1586px] px-3 pt-4 sm:px-6 md:pt-8">
+        <div className="overflow-hidden rounded-xl bg-[#f6f6f7] px-3 py-3 shadow-[inset_0_0_0_1px_rgba(17,24,39,.02)] md:px-5 md:py-4">
+          <div className="grid grid-cols-4 gap-2 md:grid-cols-12 md:gap-3">
+            {catalogShortcuts.slice(0, 12).map((shortcut, index) => {
+              const product = shortcutProducts[shortcut.key];
+              const href = product ? `/product/${product.id}` : shortcut.fallbackHref;
+              const image = product ? bestProductImage(product) : shortcut.image;
+              const fallback = product ? fallbackImageForProduct(product) : gameImages.astral;
+
+              return (
+                <a
+                  key={shortcut.key}
+                  href={href}
+                  className={`group min-w-0 flex-col items-center justify-start border-r border-[#d9d9dc] px-1 last:border-r-0 md:flex md:px-2 ${index >= 4 ? "hidden" : "flex"}`}
+                >
+                  <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5 md:h-16 md:w-16 md:rounded-xl">
+                    <img
+                      src={image}
+                      alt={shortcut.label}
+                      onError={(event) => preventBrokenImage(event, fallback)}
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    />
+                  </span>
+                  <span className="mt-2 line-clamp-2 w-full text-center text-[10.5px] leading-4 text-black md:text-[12px] md:leading-5">
+                    {shortcut.label}
+                  </span>
+                </a>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      <section id="products" className="mx-auto max-w-[1586px] px-6 py-9">
-        <div className="mb-7 flex items-center justify-between">
-          <h2 className="text-[21px] font-black">Produits les Plus Vendus</h2>
-          <a className="flex items-center gap-1 text-[16px] text-[#0057d9]" href="#">Voir tout <ChevronRight className="h-5 w-5" /></a>
+      <section id="products" className="mx-auto max-w-[1586px] px-3 py-5 sm:px-6 md:py-9">
+        <div className="mb-4 flex items-center justify-between md:mb-7">
+          <h2 className="text-[17px] font-black md:text-[21px]">Produits les Plus Vendus</h2>
+          <a className="flex items-center gap-1 text-[13px] text-[#0057d9] md:text-[16px]" href="/category/top-up">Voir plus <ChevronRight className="h-4 w-4 md:h-5 md:w-5" /></a>
         </div>
 
-        {catalogStatus === "loading" && <p className="rounded-lg bg-[#f6f6f7] p-5 text-sm text-[#4b5563]">Chargement du catalogue fournisseur...</p>}
-        {catalogStatus === "empty" && <p className="rounded-lg bg-[#fff7ed] p-5 text-sm text-[#9a3412]">Catalogue en attente de synchronisation sur le serveur.</p>}
-        {catalogStatus === "error" && <p className="rounded-lg bg-[#fef2f2] p-5 text-sm text-[#991b1b]">Impossible de charger le catalogue Astral4Gamer pour le moment.</p>}
+        {catalogStatus === "loading" && <p className="rounded-lg bg-[#f6f6f7] p-3 text-xs text-[#4b5563] md:p-5 md:text-sm">Chargement du catalogue...</p>}
+        {catalogStatus === "empty" && <p className="rounded-lg bg-[#fff7ed] p-3 text-xs text-[#9a3412] md:p-5 md:text-sm">Catalogue en attente de synchronisation sur le serveur.</p>}
+        {catalogStatus === "error" && <p className="rounded-lg bg-[#fef2f2] p-3 text-xs text-[#991b1b] md:p-5 md:text-sm">Impossible de charger le catalogue Astral4Gamer pour le moment.</p>}
 
-        <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-4 xl:grid-cols-8">
-          {products.map((product, index) => (
-            <a href={`/product/${product.id}`} key={product.id} className={`soft-pop rounded-xl p-3 ${index === 3 ? "bg-[#f3f3f3]" : "bg-white"}`}>
-              <div className="relative aspect-square overflow-hidden rounded-lg bg-[#f4f4f5]">
-                {product.variation_id && <span className="absolute left-2 top-2 z-10 rounded bg-[#f04a25] px-2 py-1 text-[10px] font-black text-white">API</span>}
-                <img src={product.image_url || gameImages.pubg} alt={product.name} className="h-full w-full object-cover transition duration-300 hover:scale-105" />
-              </div>
-              <div className="px-1 py-3">
-                <h3 className="min-h-[42px] text-[14px] font-medium leading-5 text-[#004bd6]">{product.name}</h3>
-                <p className="mt-5 text-right text-[14px] text-black">{product.price ? `${product.price} ${product.currency}` : "Prix API"}</p>
-              </div>
-            </a>
-          ))}
-        </div>
-
-        <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {promos.map((promo) => (
-            <a key={promo.title} href={promo.href} className={`soft-pop group relative h-[218px] overflow-hidden rounded-xl bg-gradient-to-r ${promo.accent} p-7`}>
-              <img src={promo.image} alt={promo.title} className="absolute inset-y-0 right-0 h-full w-[58%] object-cover transition duration-500 group-hover:scale-105" />
-              <div className="absolute inset-0 bg-gradient-to-r from-white via-white/78 to-transparent" />
-              <div className="relative z-10 flex h-full max-w-[205px] flex-col">
-                <span className="grid h-12 w-24 place-items-center rounded-md bg-white/95 p-2 shadow-sm">
-                  <img src={promo.logo} alt={`${promo.title} logo`} className="max-h-full max-w-full object-contain" />
-                </span>
-                <h3 className="mt-4 text-[24px] font-black leading-6 text-[#111827]">{promo.title}</h3>
-                <p className="mt-2 text-sm font-black uppercase text-[#1f2937]">{promo.subtitle}</p>
-                <span className="mt-auto inline-flex w-max items-center rounded bg-[#111827] px-3 py-2 text-[11px] font-black text-white shadow-sm">
-                  Acheter <ChevronRight className="ml-1 h-3.5 w-3.5" />
-                </span>
-              </div>
-            </a>
-          ))}
-        </div>
+        {catalogStatus === "ready" ? (
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 md:grid-cols-4 md:gap-x-6 md:gap-y-10 xl:grid-cols-8">
+            {products.map((product, index) => (
+              <a href={`/product/${product.id}`} key={product.id} className={`soft-pop min-w-0 rounded-lg p-1.5 md:rounded-xl md:p-3 ${index === 3 ? "bg-[#f3f3f3]" : "bg-white"}`}>
+                <div className="relative aspect-square overflow-hidden rounded-md bg-[#f4f4f5] md:rounded-lg">
+                  <img src={bestProductImage(product)} alt={product.name} onError={(event) => preventBrokenImage(event, fallbackImageForProduct(product))} className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                </div>
+                <div className="px-0.5 py-1.5 md:px-1 md:py-3">
+                  <h3 className="line-clamp-2 min-h-[30px] text-[10.5px] font-semibold leading-[15px] text-[#004bd6] md:min-h-[42px] md:text-[14px] md:leading-5">{product.name}</h3>
+                  <p className="mt-1 truncate text-right text-[10px] font-medium text-black md:mt-5 md:text-[14px]">{bestProductPrice(product)}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : null}
       </section>
-      <Footer />
     </main>
   );
 }

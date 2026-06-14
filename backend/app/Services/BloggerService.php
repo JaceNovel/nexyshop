@@ -13,6 +13,20 @@ use Illuminate\Support\Str;
 
 class BloggerService
 {
+    public function syncPost(BlogPost $post, bool $publish = true): array
+    {
+        if (! filled(config('services.blogger.blog_id'))) {
+            throw new \RuntimeException('BLOGGER_BLOG_ID n est pas configure.');
+        }
+
+        $content = $this->contentForBlogger($post);
+        $labels = config('services.blogger.labels');
+
+        return $post->blogger_post_id
+            ? $this->updatePost($post->blogger_post_id, $post->title, $content, $labels)
+            : $this->createPost($post->title, $content, $labels, ! $publish);
+    }
+
     public function listBlogs(GoogleAccount $account): array
     {
         $response = Http::withToken($account->access_token)->get('https://www.googleapis.com/blogger/v3/users/self/blogs');
@@ -86,6 +100,20 @@ class BloggerService
         $response->throw();
 
         return $response->json();
+    }
+
+    public function contentForBlogger(BlogPost $post): string
+    {
+        $frontendUrl = rtrim((string) config('services.google.frontend_url'), '/');
+        $articleUrl = $frontendUrl.'/blog/'.$post->slug;
+        $cover = $post->cover_image_url
+            ? '<p><img src="'.e($post->cover_image_url).'" alt="" style="max-width:100%;height:auto;border-radius:12px;" /></p>'
+            : '';
+
+        return $cover
+            .$post->content_html
+            .'<hr />'
+            .'<p><strong>Astral4Gamer</strong> - Lire l article original : <a href="'.e($articleUrl).'">'.e($articleUrl).'</a></p>';
     }
 
     public function draftFromTournament(Tournament $tournament, ?int $createdBy = null): BlogPost

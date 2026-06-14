@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
+import { DiscordFollowPopup } from "@/components/discord-follow-popup";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient());
@@ -12,5 +13,10 @@ export function Providers({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      {children}
+      <DiscordFollowPopup />
+    </QueryClientProvider>
+  );
 }

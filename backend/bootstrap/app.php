@@ -22,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withSchedule(function (Schedule $schedule) {
         $schedule->command('nexy:refresh-live-metrics')->everyMinute();
+        $schedule->command('nexy:sync-item4gamer')->everySixHours()->withoutOverlapping();
+        $schedule->command('nexy:daily-shop-promotions')->dailyAt('10:00')->withoutOverlapping();
+        $schedule->command('nexy:discord-community-calendar')->weeklyOn(1, '09:00')->withoutOverlapping();
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

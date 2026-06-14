@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TournamentTeam extends Model
 {
-    protected $fillable = ['tournament_id', 'guild_id', 'name', 'captain_user_id', 'status', 'points', 'kills'];
+    protected $fillable = ['tournament_id', 'guild_id', 'name', 'captain_user_id', 'status', 'points', 'kills', 'metadata'];
+    protected $casts = ['metadata' => 'array'];
 
     public function rounds(): HasMany
     {

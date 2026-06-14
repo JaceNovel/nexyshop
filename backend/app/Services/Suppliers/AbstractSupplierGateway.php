@@ -15,6 +15,7 @@ abstract class AbstractSupplierGateway implements SupplierGateway
     {
         $started = microtime(true);
         $response = Http::withHeaders($this->headers())
+            ->withOptions($this->requestOptions())
             ->timeout(20)
             ->retry(2, 250)
             ->get($this->baseUrl.$endpoint, $query);
@@ -29,6 +30,7 @@ abstract class AbstractSupplierGateway implements SupplierGateway
     {
         $started = microtime(true);
         $response = Http::withHeaders($this->headers())
+            ->withOptions($this->requestOptions())
             ->timeout(20)
             ->retry(2, 250)
             ->post($this->baseUrl.$endpoint, $payload);
@@ -46,6 +48,11 @@ abstract class AbstractSupplierGateway implements SupplierGateway
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
         ]);
+    }
+
+    protected function requestOptions(): array
+    {
+        return [];
     }
 
     protected function log(string $endpoint, array $payload, ?array $response, int $status, float $started): void

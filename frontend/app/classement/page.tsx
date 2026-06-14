@@ -47,7 +47,7 @@ export default function ClassementPage() {
             <div className="rounded-lg border border-[#edf0f4] bg-white p-5 shadow-[0_2px_12px_rgba(16,24,40,.055)]">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs font-black uppercase text-[#6d28d9]">Classement API</p>
+                  <p className="text-xs font-black uppercase text-[#6d28d9]">Classement officiel</p>
                   <h1 className="mt-1 text-3xl font-black">Classement complet</h1>
                   <p className="mt-1 text-sm text-[#4b5563]">Points et kills issus des résultats de tournois enregistrés.</p>
                 </div>

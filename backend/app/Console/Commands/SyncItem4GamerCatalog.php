@@ -20,7 +20,7 @@ class SyncItem4GamerCatalog extends Command
 
         $result = $sync->sync(replaceDemoProducts: ! $this->option('keep-demo'));
 
-        $this->info("Synced {$result['products']} products and {$result['variations']} variations from Item4Gamer.");
+        $this->info("Synced {$result['products']} products, {$result['variations']} variations and {$result['categories']} categories from Item4Gamer.");
 
         return self::SUCCESS;
     }

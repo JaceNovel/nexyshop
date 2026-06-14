@@ -71,7 +71,7 @@ export default function AdminRedeemCodesPage() {
         <p className="text-xs font-black uppercase text-[#e52b2f]">Admin</p>
         <h1 className="mt-2 text-4xl font-black tracking-normal">Redeem codes Free Fire</h1>
         <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#667085]">
-          Appuie une fois par jour pour appeler l’API HL Gaming, récupérer les redeem codes trouvés et les afficher pendant 24H dans la recherche. Les visiteurs devront taper <b>code gratuit</b>.
+          Appuie une fois par jour pour récupérer les redeem codes trouvés et les afficher pendant 24H dans la recherche. Les visiteurs devront taper <b>code gratuit</b>.
         </p>
 
         <section className="mt-8 rounded-lg border border-[#e5e7eb] bg-[#fbfbff] p-6 shadow-[0_14px_38px_rgba(16,24,40,.06)]">

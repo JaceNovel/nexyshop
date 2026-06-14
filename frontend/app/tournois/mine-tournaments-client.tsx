@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getMyTournaments, type Tournament } from "@/lib/api";
 
 type CreatedTournament = {
   id: number;
@@ -36,10 +37,27 @@ export function MineTournaments() {
   const [items, setItems] = useState<CreatedTournament[]>([]);
 
   useEffect(() => {
-    setItems(readCreatedTournaments());
+    let cancelled = false;
+
+    async function loadTournaments() {
+      const localItems = readCreatedTournaments();
+      setItems(localItems);
+
+      const token = localStorage.getItem("nexy_sanctum_token");
+      const payload = await getMyTournaments(token);
+      if (cancelled || !payload.data.length) return;
+
+      setItems(payload.data.map(normalizeBackendTournament));
+    }
+
+    loadTournaments();
+
     const onStorage = () => setItems(readCreatedTournaments());
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   const sorted = useMemo(() => [...items].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))), [items]);
@@ -73,3 +91,23 @@ export function MineTournaments() {
   );
 }
 
+function normalizeBackendTournament(tournament: Tournament): CreatedTournament {
+  const rules = tournament.rules ?? {};
+  return {
+    id: tournament.id,
+    title: tournament.title,
+    game: String(rules.game ?? "Free Fire"),
+    mode: tournament.mode,
+    teamType: String(rules.team_type ?? "Squad"),
+    startsAt: tournament.starts_at,
+    region: String(rules.region ?? "Afrique"),
+    platform: String(rules.platform ?? "Android"),
+    participants: String(rules.participants ?? ""),
+    rewardAmount: String(tournament.prize_pool ?? ""),
+    rewardUnit: String(rules.reward_unit ?? ""),
+    funding: String(rules.funding ?? "astral"),
+    status: tournament.status,
+    description: String(rules.description ?? ""),
+    createdAt: tournament.starts_at
+  };
+}

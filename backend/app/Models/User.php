@@ -13,6 +13,7 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name', 'email', 'password', 'is_admin', 'google_id', 'google_avatar_url',
+        'steam_id', 'steam_persona_name', 'steam_avatar_url', 'steam_connected_at',
         'google_connected_at', 'last_login_at',
         'username', 'avatar_url', 'country', 'public_profile', 'game', 'player_uid',
         'rank', 'points', 'guild', 'wins', 'tournaments_won', 'kd_ratio', 'badges',
@@ -32,5 +33,15 @@ class User extends Authenticatable
     public function googleAccounts()
     {
         return $this->hasMany(GoogleAccount::class);
+    }
+
+    public function notifications()
+    {
+        return $this->hasMany(UserNotification::class);
+    }
+
+    public function mailMessages()
+    {
+        return $this->hasMany(MailMessage::class);
     }
 }

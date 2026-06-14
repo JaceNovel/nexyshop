@@ -4,10 +4,12 @@ import { ChevronDown, Eye, EyeOff, Gamepad2, Gift, Globe2, Lock, Mail, ShieldChe
 import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
 import { useSignUp } from "@clerk/nextjs/legacy";
-import { getFreeFireProfile, type FreeFireProfile } from "@/lib/api";
+import { markDiscordPopupAfterSignup } from "@/components/discord-follow-popup";
+import { getFortniteProfile, getFreeFireProfile, getPubgProfile } from "@/lib/api";
 
 const brandLogo = "/ChatGPT_Image_28_mai_2026__20_26_02-removebg-preview.png";
-const heroImage = "/ChatGPT Image 28 mai 2026, 15_36_59.png";
+const heroImage = "/signup-hero.png";
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 const COUNTRY_CODES = [
   "AF", "AX", "AL", "DZ", "AS", "AD", "AO", "AI", "AQ", "AG", "AR", "AM", "AW", "AU", "AT", "AZ",
@@ -28,17 +30,20 @@ const COUNTRY_CODES = [
   "VE", "VN", "VG", "VI", "WF", "EH", "YE", "ZM", "ZW", "XK"
 ];
 
-const countryNameFormatter = new Intl.DisplayNames(["fr"], { type: "region" });
+const countryNameFormatter = createCountryNameFormatter();
 const countries = COUNTRY_CODES.map((code) => ({
   code,
   flagUrl: getFlagUrl(code),
-  name: countryNameFormatter.of(code) ?? code
+  name: countryNameFormatter(code)
 })).sort((first, second) => first.name.localeCompare(second.name, "fr"));
 
 const favoriteGames = [
-  { value: "free_fire", label: "Free Fire" },
-  { value: "other", label: "Autre" }
+  { value: "free_fire", label: "Free Fire", hint: "Garena ID + région", logo: "/icons/free-fire-logo.svg" },
+  { value: "pubg", label: "PUBG", hint: "Pseudo ou account.id", logo: "/icons/pubg-logo.svg" },
+  { value: "fortnite", label: "Fortnite", hint: "ID Epic/Fortnite", logo: "/icons/fortnite-logo.svg" }
 ] as const;
+
+type FavoriteGameValue = typeof favoriteGames[number]["value"];
 
 const freeFireRegions = [
   ["sg", "Singapour"], ["in", "Inde"], ["br", "Brésil"], ["pk", "Pakistan"], ["bd", "Bangladesh"],
@@ -47,10 +52,14 @@ const freeFireRegions = [
 ] as const;
 
 export default function InscriptionPage() {
-  const { isLoaded, signUp, setActive } = useSignUp();
-  const [favoriteGame, setFavoriteGame] = useState<"free_fire" | "other">("free_fire");
+  const { signUp, setActive } = useSignUp();
+  const [favoriteGame, setFavoriteGame] = useState<FavoriteGameValue>("free_fire");
+  const [gameOpen, setGameOpen] = useState(false);
   const [freeFireUid, setFreeFireUid] = useState("");
   const [freeFireRegion, setFreeFireRegion] = useState("sg");
+  const [freeFireRegionOpen, setFreeFireRegionOpen] = useState(false);
+  const [pubgGameId, setPubgGameId] = useState("");
+  const [fortniteAccountId, setFortniteAccountId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -68,7 +77,15 @@ export default function InscriptionPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!isLoaded || !signUp) return;
+    if (!clerkPublishableKey) {
+      setError("Clerk n'est pas configure sur le serveur. Ajoute NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY dans frontend/.env.local puis rebuild.");
+      return;
+    }
+
+    if (!signUp) {
+      setError("Clerk n'est pas prêt côté navigateur. Vérifie le domaine astral4gamer.com dans Clerk et recharge la page.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Les mots de passe ne correspondent pas.");
@@ -90,47 +107,40 @@ export default function InscriptionPage() {
       return;
     }
 
+    if (favoriteGame === "pubg" && !pubgGameId.trim()) {
+      setError("Entre ton ID PUBG.");
+      return;
+    }
+
+    if (favoriteGame === "fortnite" && !fortniteAccountId.trim()) {
+      setError("Entre ton ID Fortnite.");
+      return;
+    }
+
     setIsSubmitting(true);
-    setSubmitStage(favoriteGame === "free_fire" ? "Vérification Free Fire..." : "Création du compte...");
+    setGameOpen(false);
+    setFreeFireRegionOpen(false);
+    setCountryOpen(false);
+    setSubmitStage("Création du compte...");
     setError(null);
 
     try {
-      let freeFireProfile: FreeFireProfile | null = null;
-
-      if (favoriteGame === "free_fire") {
-        try {
-          freeFireProfile = await getFreeFireProfile(freeFireUid.trim(), freeFireRegion);
-        } catch (freeFireError) {
-          const message = freeFireError instanceof Error ? freeFireError.message : "ID incorrect";
-          setError(message.toLowerCase().includes("incorrect") ? "ID incorrect" : message);
-          return;
-        }
-      }
-
-      const gameMetadata = {
-        favorite_game: favoriteGame,
+      setSubmitStage("Vérification du compte jeu...");
+      const gameMetadata = await resolveGameMetadata({
+        favoriteGame,
         country,
-        free_fire: freeFireProfile
-          ? {
-              uid: freeFireProfile.uid,
-              region: freeFireProfile.region,
-              nickname: freeFireProfile.nickname,
-              level: freeFireProfile.level,
-              likes: freeFireProfile.likes,
-              br_rank_points: freeFireProfile.br_rank_points,
-              cs_rank_points: freeFireProfile.cs_rank_points,
-              outfit_url: freeFireProfile.outfit_url,
-              banner_url: freeFireProfile.banner_url
-            }
-          : null
-      };
-
+        freeFireUid,
+        freeFireRegion,
+        pubgGameId,
+        fortniteAccountId
+      });
       setSubmitStage("Création du compte...");
-      localStorage.setItem("astral_favorite_game", favoriteGame);
-      if (gameMetadata.free_fire) {
-        localStorage.setItem("astral_freefire_profile", JSON.stringify(gameMetadata.free_fire));
-      } else {
-        localStorage.removeItem("astral_freefire_profile");
+
+      persistGameMetadata(gameMetadata);
+
+      if (!signUp) {
+        setError("Clerk n'est pas prêt côté navigateur. Vérifie le domaine astral4gamer.com dans Clerk et recharge la page.");
+        return;
       }
 
       const result = await signUp.create({
@@ -140,6 +150,7 @@ export default function InscriptionPage() {
       });
 
       if (result.status === "complete") {
+        markDiscordPopupAfterSignup();
         await setActive({ session: result.createdSessionId });
         window.location.href = "/profil";
         return;
@@ -164,7 +175,15 @@ export default function InscriptionPage() {
 
   async function handleVerifyEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!isLoaded || !signUp) return;
+    if (!clerkPublishableKey) {
+      setError("Clerk n'est pas configure sur le serveur. Ajoute NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY dans frontend/.env.local puis rebuild.");
+      return;
+    }
+
+    if (!signUp) {
+      setError("Clerk n'est pas prêt côté navigateur. Vérifie le domaine astral4gamer.com dans Clerk et recharge la page.");
+      return;
+    }
 
     if (!verificationCode.trim()) {
       setError("Entre le code reçu par e-mail.");
@@ -178,6 +197,7 @@ export default function InscriptionPage() {
       const result = await signUp.attemptEmailAddressVerification({ code: verificationCode.trim() });
 
       if (result.status === "complete") {
+        markDiscordPopupAfterSignup();
         await setActive({ session: result.createdSessionId });
         window.location.href = "/profil";
         return;
@@ -191,12 +211,51 @@ export default function InscriptionPage() {
     }
   }
 
-  async function handleSocialSignUp(strategy: "oauth_google" | "oauth_facebook" | "oauth_discord") {
-    if (!isLoaded || !signUp) return;
+  async function handleSocialSignUp(strategy: "oauth_google" | "oauth_discord") {
+    if (!clerkPublishableKey) {
+      setError("Clerk n'est pas configure sur le serveur. Ajoute NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY dans frontend/.env.local puis rebuild.");
+      return;
+    }
+
+    if (!signUp) {
+      setError("Clerk n'est pas prêt côté navigateur. Vérifie le domaine astral4gamer.com dans Clerk et recharge la page.");
+      return;
+    }
 
     setError(null);
+    setSubmitStage("Préparation du compte...");
 
     try {
+      if (!country) {
+        throw new Error("Sélectionne ton pays ou ta région.");
+      }
+
+      if (favoriteGame === "free_fire" && !freeFireUid.trim()) {
+        throw new Error("Entre ton ID Free Fire.");
+      }
+
+      if (favoriteGame === "pubg" && !pubgGameId.trim()) {
+        throw new Error("Entre ton ID PUBG.");
+      }
+
+      if (favoriteGame === "fortnite" && !fortniteAccountId.trim()) {
+        throw new Error("Entre ton ID Fortnite.");
+      }
+
+      setSubmitStage("Vérification du compte jeu...");
+      const gameMetadata = await resolveGameMetadata({
+        favoriteGame,
+        country,
+        freeFireUid,
+        freeFireRegion,
+        pubgGameId,
+        fortniteAccountId
+      });
+      localStorage.setItem("astral_pending_social_signup", JSON.stringify(gameMetadata));
+      localStorage.setItem("astral_favorite_game", favoriteGame);
+      persistGameMetadata(gameMetadata);
+      markDiscordPopupAfterSignup();
+
       await signUp.authenticateWithRedirect({
         strategy,
         redirectUrl: "/sso-callback",
@@ -204,22 +263,23 @@ export default function InscriptionPage() {
       });
     } catch (requestError) {
       setError(getClerkError(requestError));
+      setSubmitStage(null);
     }
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-white text-[#111827]">
-      <section className="mx-auto grid h-screen max-w-[1360px] grid-rows-[auto_1fr] px-4 py-4 sm:px-6 lg:px-10">
-        <header className="flex items-center justify-between gap-6">
+    <main className="min-h-screen overflow-x-hidden bg-white text-[#111827]">
+      <section className="mx-auto grid min-h-screen max-w-[1360px] grid-rows-[auto_1fr] px-3 py-3 sm:px-6 sm:py-4 lg:px-10">
+        <header className="flex items-center justify-between gap-3 sm:gap-6">
           <a href="/" className="inline-flex items-center gap-3" aria-label="Astral4Gamer">
-            <span className="relative h-[64px] w-[64px] shrink-0 overflow-hidden">
+            <span className="relative h-[48px] w-[48px] shrink-0 overflow-hidden sm:h-[64px] sm:w-[64px]">
               <img src={brandLogo} alt="" className="absolute left-[-48px] top-[-9px] h-auto w-[154px] max-w-none" />
             </span>
             <span className="flex flex-col leading-none">
-              <span className="text-[25px] font-black italic text-black">
+              <span className="text-[18px] font-black italic text-black sm:text-[25px]">
                 ASTRAL<span className="text-[#ff1f2f]">4</span>GAMER
               </span>
-              <span className="mt-2 text-center text-[8px] font-black tracking-[.42em] text-black">
+              <span className="mt-1 text-center text-[6px] font-black tracking-[.32em] text-black sm:mt-2 sm:text-[8px] sm:tracking-[.42em]">
                 <span className="text-[#ff1f2f]">PLAY</span> • COMPETE • WIN
               </span>
             </span>
@@ -232,7 +292,7 @@ export default function InscriptionPage() {
           </div>
         </header>
 
-        <div className="grid min-h-0 items-center gap-6 py-3 lg:grid-cols-[minmax(0,1fr)_600px] lg:py-4">
+        <div className="grid min-h-0 items-start gap-6 py-4 lg:grid-cols-[minmax(0,1fr)_600px] lg:items-center lg:py-4">
           <section className="relative hidden min-h-0 lg:block">
             <div className="relative z-10 max-w-[540px]">
               <h1 className="text-[34px] font-black leading-[1.18] tracking-normal text-[#111827] xl:text-[40px]">
@@ -254,7 +314,7 @@ export default function InscriptionPage() {
             </div>
           </section>
 
-          <section className="mx-auto w-full max-w-[600px] rounded-xl border border-[#eef0f4] bg-white px-5 py-5 shadow-[0_18px_56px_rgba(17,24,39,.10)] sm:px-8 lg:px-9">
+          <section className="mx-auto w-full max-w-[600px] rounded-xl border border-[#eef0f4] bg-white px-4 py-5 shadow-[0_18px_56px_rgba(17,24,39,.10)] sm:px-8 lg:px-9">
             <div className="text-center">
               <h2 className="text-[26px] font-black tracking-normal text-[#111827]">Créer un compte</h2>
               <p className="mt-2 text-[12px] font-medium text-[#6b7280]">
@@ -267,7 +327,7 @@ export default function InscriptionPage() {
                 <div className="rounded-lg border border-[#ffd6db] bg-red-50 px-4 py-3">
                   <p className="text-[13px] font-black text-[#111827]">Vérifie ton e-mail</p>
                   <p className="mt-1 text-[12px] font-semibold leading-5 text-[#6b7280]">
-                    Clerk a envoyé un code à <span className="font-black text-[#ff1f2f]">{email}</span>.
+                    Vous avez reçu un code à <span className="font-black text-[#ff1f2f]">{email}</span>.
                   </p>
                 </div>
 
@@ -285,7 +345,7 @@ export default function InscriptionPage() {
 
                 {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-[12px] font-semibold text-[#b91c1c]">{error}</p> : null}
 
-                <button disabled={!isLoaded || isVerifying} type="submit" className="h-11 w-full rounded-lg bg-[#ff1f2f] text-[13px] font-black text-white shadow-[0_12px_26px_rgba(255,31,47,.18)] transition hover:bg-[#e51b2a] disabled:cursor-not-allowed disabled:opacity-70">
+                <button disabled={isVerifying} type="submit" className="h-11 w-full rounded-lg bg-[#ff1f2f] text-[13px] font-black text-white shadow-[0_12px_26px_rgba(255,31,47,.18)] transition hover:bg-[#e51b2a] disabled:cursor-not-allowed disabled:opacity-70">
                   {isVerifying ? "Vérification..." : "Valider le code"}
                 </button>
 
@@ -302,28 +362,45 @@ export default function InscriptionPage() {
               </form>
             ) : (
             <form onSubmit={handleSubmit} className="mt-5 space-y-3">
-              <Field label="Sélectionne ton jeu favori" icon={<Gamepad2 className="h-4 w-4" />}>
-                <select value={favoriteGame} onChange={(event) => setFavoriteGame(event.target.value as "free_fire" | "other")} className="h-full flex-1 appearance-none bg-transparent text-[13px] font-black text-[#111827] outline-none">
-                  {favoriteGames.map((game) => (
-                    <option key={game.value} value={game.value}>{game.label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="h-4 w-4 text-[#475569]" />
-              </Field>
+              <GameSelect
+                open={gameOpen}
+                value={favoriteGame}
+                onOpenChange={setGameOpen}
+                onChange={(value) => {
+                  setFavoriteGame(value);
+                  setGameOpen(false);
+                }}
+              />
 
               {favoriteGame === "free_fire" ? (
                 <div className="grid gap-4 sm:grid-cols-[1fr_150px]">
                   <Field label="ID Free Fire" icon={<Gamepad2 className="h-4 w-4" />}>
                     <input value={freeFireUid} onChange={(event) => setFreeFireUid(event.target.value)} className="h-full flex-1 bg-transparent text-[13px] font-medium text-[#111827] outline-none placeholder:text-[#9aa3b2]" placeholder="Entre ton ID joueur" inputMode="numeric" required />
                   </Field>
-                  <Field label="Région" icon={<Globe2 className="h-4 w-4" />}>
-                    <select value={freeFireRegion} onChange={(event) => setFreeFireRegion(event.target.value)} className="h-full flex-1 appearance-none bg-transparent text-[13px] font-black text-[#111827] outline-none">
-                      {freeFireRegions.map(([code, label]) => (
-                        <option key={code} value={code}>{label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="h-4 w-4 text-[#475569]" />
+                  <RegionSelect
+                    value={freeFireRegion}
+                    open={freeFireRegionOpen}
+                    onOpenChange={setFreeFireRegionOpen}
+                    onChange={(value) => {
+                      setFreeFireRegion(value);
+                      setFreeFireRegionOpen(false);
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              {favoriteGame === "pubg" ? (
+                <Field label="ID PUBG" icon={<Gamepad2 className="h-4 w-4" />}>
+                  <input value={pubgGameId} onChange={(event) => setPubgGameId(event.target.value)} className="h-full flex-1 bg-transparent text-[13px] font-medium text-[#111827] outline-none placeholder:text-[#9aa3b2]" placeholder="Pseudo PUBG ou account.id" required />
+                </Field>
+              ) : null}
+
+              {favoriteGame === "fortnite" ? (
+                <div>
+                  <Field label="ID Fortnite" icon={<Gamepad2 className="h-4 w-4" />}>
+                    <input value={fortniteAccountId} onChange={(event) => setFortniteAccountId(event.target.value)} className="h-full flex-1 bg-transparent text-[13px] font-medium text-[#111827] outline-none placeholder:text-[#9aa3b2]" placeholder="ID de compte Epic/Fortnite" required />
                   </Field>
+                  <p className="mt-2 text-[11px] font-bold text-[#6b7280]">Entre uniquement ton ID. Ton pseudo Fortnite sera récupéré automatiquement après vérification.</p>
                 </div>
               ) : null}
 
@@ -397,9 +474,9 @@ export default function InscriptionPage() {
 	              {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-[12px] font-semibold text-[#b91c1c]">{error}</p> : null}
 	              {submitStage && !error ? <p className="rounded-lg bg-[#fff4d6] px-3 py-2 text-[12px] font-black text-[#8a5a00]">{submitStage}</p> : null}
 
-	              <div id="clerk-captcha" className="flex justify-center" />
+	              <div id="clerk-captcha" className="flex justify-center empty:hidden" />
 
-	              <button disabled={!isLoaded || isSubmitting} type="submit" className="h-11 w-full rounded-lg bg-[#ff1f2f] text-[13px] font-black text-white shadow-[0_12px_26px_rgba(255,31,47,.18)] transition hover:bg-[#e51b2a] disabled:cursor-not-allowed disabled:opacity-70">
+	              <button disabled={isSubmitting} type="submit" onClick={() => setError(null)} className="relative z-10 h-11 w-full rounded-lg bg-[#ff1f2f] text-[13px] font-black text-white shadow-[0_12px_26px_rgba(255,31,47,.18)] transition hover:bg-[#e51b2a] disabled:cursor-not-allowed disabled:opacity-70">
 	                {isSubmitting ? submitStage ?? "Création..." : "Créer un compte"}
 	              </button>
             </form>
@@ -411,9 +488,8 @@ export default function InscriptionPage() {
               <span className="h-px flex-1 bg-[#e5e7eb]" />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <SocialButton label="Google" provider="google" onClick={() => handleSocialSignUp("oauth_google")} />
-              <SocialButton label="Facebook" provider="facebook" onClick={() => handleSocialSignUp("oauth_facebook")} />
               <SocialButton label="Discord" provider="discord" onClick={() => handleSocialSignUp("oauth_discord")} />
             </div>
 
@@ -425,6 +501,188 @@ export default function InscriptionPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function GameSelect({
+  value,
+  open,
+  onOpenChange,
+  onChange
+}: {
+  value: FavoriteGameValue;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChange: (value: FavoriteGameValue) => void;
+}) {
+  const selected = favoriteGames.find((game) => game.value === value) ?? favoriteGames[0];
+
+  return (
+    <div className="relative">
+      <span className="text-[12px] font-black text-[#111827]">Sélectionne ton jeu favori</span>
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className={`mt-2 flex h-12 w-full items-center gap-3 rounded-lg border bg-white px-3 text-left transition hover:border-[#ff8a93] focus:outline-none focus:ring-4 focus:ring-red-500/10 ${open ? "border-[#ff1f2f] ring-4 ring-red-500/10" : "border-[#d8dde7]"}`}
+        aria-expanded={open}
+      >
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#f8fafc] ring-1 ring-[#eef0f4]">
+          <img src={selected.logo} alt="" className="h-7 w-7 object-contain" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-black text-[#111827]">{selected.label}</span>
+          <span className="mt-0.5 block truncate text-[11px] font-semibold text-[#667085]">{selected.hint}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-[#475569] transition ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 right-0 top-[74px] z-50 overflow-hidden rounded-xl border border-[#d8dde7] bg-white p-1 shadow-[0_18px_42px_rgba(17,24,39,.16)]">
+          {favoriteGames.map((game) => (
+            <button
+              key={game.value}
+              type="button"
+              onClick={() => onChange(game.value)}
+              className={`flex h-14 w-full items-center gap-3 rounded-lg px-3 text-left transition hover:bg-red-50 hover:text-[#ff1f2f] ${value === game.value ? "bg-red-50 text-[#ff1f2f]" : "text-[#111827]"}`}
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white ring-1 ring-[#eef0f4]">
+                <img src={game.logo} alt="" className="h-7 w-7 object-contain" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-black">{game.label}</span>
+                <span className="mt-0.5 block truncate text-[11px] font-semibold text-[#667085]">{game.hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+async function resolveGameMetadata({
+  favoriteGame,
+  country,
+  freeFireUid,
+  freeFireRegion,
+  pubgGameId,
+  fortniteAccountId
+}: {
+  favoriteGame: FavoriteGameValue;
+  country: string;
+  freeFireUid: string;
+  freeFireRegion: string;
+  pubgGameId: string;
+  fortniteAccountId: string;
+}) {
+  if (favoriteGame === "free_fire") {
+    const profile = await getFreeFireProfile(freeFireUid.trim(), freeFireRegion, { persistAsCurrentUser: true });
+
+    return {
+      favorite_game: favoriteGame,
+      game: favoriteGame,
+      country,
+      free_fire: profile,
+      pubg: null,
+      fortnite: null,
+      call_of_duty: null
+    };
+  }
+
+  if (favoriteGame === "pubg") {
+    const profile = await getPubgProfile(pubgGameId.trim(), { persistAsCurrentUser: true });
+
+    return {
+      favorite_game: favoriteGame,
+      game: favoriteGame,
+      country,
+      free_fire: null,
+      pubg: profile,
+      fortnite: null,
+      call_of_duty: null
+    };
+  }
+
+  const profile = await getFortniteProfile(fortniteAccountId.trim(), { persistAsCurrentUser: true });
+
+  return {
+    favorite_game: favoriteGame,
+    game: favoriteGame,
+    country,
+    free_fire: null,
+    pubg: null,
+    fortnite: profile,
+    call_of_duty: null
+  };
+}
+
+function persistGameMetadata(gameMetadata: Awaited<ReturnType<typeof resolveGameMetadata>>) {
+  localStorage.setItem("astral_favorite_game", gameMetadata.favorite_game);
+
+  if (gameMetadata.free_fire) {
+    localStorage.setItem("astral_freefire_profile", JSON.stringify(gameMetadata.free_fire));
+  } else {
+    localStorage.removeItem("astral_freefire_profile");
+  }
+
+  if (gameMetadata.pubg) {
+    localStorage.setItem("astral_pubg_profile", JSON.stringify(gameMetadata.pubg));
+  } else {
+    localStorage.removeItem("astral_pubg_profile");
+  }
+
+  if (gameMetadata.fortnite) {
+    localStorage.setItem("astral_fortnite_profile", JSON.stringify(gameMetadata.fortnite));
+  } else {
+    localStorage.removeItem("astral_fortnite_profile");
+  }
+
+  localStorage.removeItem("astral_cod_profile");
+}
+
+function RegionSelect({
+  value,
+  open,
+  onOpenChange,
+  onChange
+}: {
+  value: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChange: (value: string) => void;
+}) {
+  const selected = freeFireRegions.find(([code]) => code === value) ?? freeFireRegions[0];
+
+  return (
+    <div className="relative">
+      <span className="text-[12px] font-black text-[#111827]">Région</span>
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className={`mt-2 flex h-11 w-full items-center gap-2 rounded-lg border bg-white px-3 text-left transition hover:border-[#ff8a93] focus:outline-none focus:ring-4 focus:ring-red-500/10 ${open ? "border-[#ff1f2f] ring-4 ring-red-500/10" : "border-[#d8dde7]"}`}
+        aria-expanded={open}
+      >
+        <Globe2 className="h-4 w-4 shrink-0 text-[#9aa3b2]" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-black text-[#111827]">{selected[1]}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-[#475569] transition ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 right-0 top-[68px] z-50 max-h-60 overflow-y-auto rounded-xl border border-[#d8dde7] bg-white p-1 shadow-[0_18px_42px_rgba(17,24,39,.16)]">
+          {freeFireRegions.map(([code, label]) => (
+            <button
+              key={code}
+              type="button"
+              onClick={() => onChange(code)}
+              className={`flex h-10 w-full items-center justify-between rounded-lg px-3 text-left text-[13px] font-bold transition hover:bg-red-50 hover:text-[#ff1f2f] ${value === code ? "bg-red-50 text-[#ff1f2f]" : "text-[#111827]"}`}
+            >
+              <span className="truncate">{label}</span>
+              <span className="text-[11px] font-black uppercase opacity-60">{code}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -452,7 +710,7 @@ function FeatureCard({ icon, title, text, className }: { icon: ReactNode; title:
   );
 }
 
-function SocialButton({ label, provider, onClick }: { label: string; provider: "google" | "facebook" | "discord"; onClick: () => void }) {
+function SocialButton({ label, provider, onClick }: { label: string; provider: "google" | "discord"; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#dfe4ec] bg-white px-2 text-[12px] font-black text-[#111827] transition hover:border-[#ff1f2f] hover:text-[#ff1f2f]">
       <ProviderIcon provider={provider} />
@@ -461,7 +719,7 @@ function SocialButton({ label, provider, onClick }: { label: string; provider: "
   );
 }
 
-function ProviderIcon({ provider }: { provider: "google" | "facebook" | "discord" }) {
+function ProviderIcon({ provider }: { provider: "google" | "discord" }) {
   if (provider === "google") {
     return (
       <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
@@ -469,14 +727,6 @@ function ProviderIcon({ provider }: { provider: "google" | "facebook" | "discord
         <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23Z" />
         <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84Z" />
         <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06L5.84 9.9C6.71 7.31 9.14 5.38 12 5.38Z" />
-      </svg>
-    );
-  }
-
-  if (provider === "facebook") {
-    return (
-      <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-        <path fill="#1877F2" d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.03 1.79-4.7 4.53-4.7 1.31 0 2.69.24 2.69.24v2.97h-1.52c-1.49 0-1.96.93-1.96 1.89v2.26h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07Z" />
       </svg>
     );
   }
@@ -507,7 +757,22 @@ function getFlagUrl(countryCode: string) {
   return `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png`;
 }
 
+function createCountryNameFormatter() {
+  try {
+    if (typeof Intl !== "undefined" && "DisplayNames" in Intl) {
+      const formatter = new Intl.DisplayNames(["fr"], { type: "region" });
+      return (code: string) => formatter.of(code) ?? code;
+    }
+  } catch {
+    // Older mobile browsers can fail while constructing Intl.DisplayNames.
+  }
+
+  return (code: string) => code;
+}
+
 function getClerkError(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+
   const clerkError = error as { errors?: { longMessage?: string; message?: string }[] };
   return clerkError.errors?.[0]?.longMessage ?? clerkError.errors?.[0]?.message ?? "Inscription impossible pour le moment.";
 }

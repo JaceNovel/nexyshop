@@ -149,6 +149,9 @@ const liveTournaments = [
 
 function normalizeTournament(tournament: Tournament, index: number): TournamentCard {
   const fallback = fallbackTournaments[index % fallbackTournaments.length];
+  const rules = tournament.rules ?? {};
+  const coverImage = typeof rules.cover_image === "string" ? rules.cover_image : "";
+  const funding = rules.funding === "self" ? "self" : rules.funding === "astral" ? "astral" : fallback.fundingGuarantee;
 
   return {
     ...tournament,
@@ -159,14 +162,14 @@ function normalizeTournament(tournament: Tournament, index: number): TournamentC
     prize_pool: tournament.prize_pool || fallback.prize_pool,
     teams_count: tournament.teams_count ?? tournament.teams?.length ?? fallback.teams_count,
     room_id: tournament.room_id ?? fallback.room_id,
-    banner: fallback.banner,
-    fee: Number(tournament.prize_pool) > 120000 ? "2,000 FCFA" : "GRATUITE",
+    banner: coverImage || fallback.banner,
+    fee: funding === "self" ? "GRATUITE" : "2$",
     rewardLabel: new Intl.NumberFormat("fr-FR").format(Number(tournament.prize_pool || fallback.prize_pool)),
     rewardExtra: fallback.rewardExtra,
     startsLabel: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(tournament.starts_at || fallback.starts_at)),
     registrationEnd: fallback.registrationEnd,
     badge: fallback.badge,
-    fundingGuarantee: fallback.fundingGuarantee
+    fundingGuarantee: funding
   };
 }
 
