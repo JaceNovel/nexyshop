@@ -59,5 +59,8 @@ export const commands = [
     .setDescription("Explique comment utiliser Astral Scout."),
   new SlashCommandBuilder()
     .setName("site")
-    .setDescription("Affiche le lien de la recherche officielle Astral4Gamer.")
+    .setDescription("Affiche le lien de la recherche officielle Astral4Gamer."),
+  new SlashCommandBuilder()
+    .setName("partenariat")
+    .setDescription("Ouvre le formulaire officiel de demande partenaire Astral4Gamer.")
 ].map((command) => command.toJSON());

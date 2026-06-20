@@ -9,12 +9,9 @@ import {
   Clock3,
   Download,
   Eye,
-  ListFilter,
   MessageCircle,
   MoreHorizontal,
-  Send,
   Share2,
-  ThumbsDown,
   ThumbsUp
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -33,10 +30,10 @@ import { formatDate, formatDuration, formatViews } from "@/lib/video-format";
 export function ReplayDetailClient({ replay, recommended }: { replay: Replay; recommended: Replay[] }) {
   const [seekTo, setSeekTo] = useState<number | null>(null);
   const [actionStatus, setActionStatus] = useState("");
-  const videoId = replay.youtube_video_id || "M7lc1UVf-VE";
+  const videoId = replay.youtube_video_id ?? "";
   const moments = getDisplayMoments(replay);
   const recommendedVideos = recommended.length ? recommended : [replay];
-  const firstTeam = replay.teams?.[0] ?? "TEAM SHADOW";
+  const canUseYoutubeActions = Boolean(videoId);
 
   return (
     <section className="mx-auto max-w-[1560px] px-5 py-6 text-[#111827] lg:px-8">
@@ -51,7 +48,16 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0">
           <div className="overflow-hidden rounded-lg border border-[#e5e7eb] bg-black">
-            <YouTubePlayer videoId={videoId} seekToSeconds={seekTo} title={replay.title} />
+            {videoId ? (
+              <YouTubePlayer videoId={videoId} seekToSeconds={seekTo} title={replay.title} />
+            ) : (
+              <div className="grid aspect-video place-items-center p-6 text-center text-white">
+                <div>
+                  <p className="text-lg font-black">Vidéo non synchronisée</p>
+                  <p className="mt-2 text-sm text-white/70">Ajoute l’ID YouTube du replay depuis l’admin vidéo pour activer le lecteur.</p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mt-4">
@@ -66,22 +72,21 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
 
           <div className="mt-5 flex flex-col gap-4 border-b border-[#e5e7eb] pb-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#111827] text-lg font-black text-white ring-2 ring-[#dc2626]">N</div>
+              <img src="/icon.svg" alt="" className="h-12 w-12 shrink-0 rounded-full bg-[#111827] object-cover ring-2 ring-[#dc2626]" />
               <div>
-                <p className="flex items-center gap-1 text-[15px] font-black">NEXY Esport <span className="grid h-4 w-4 place-items-center rounded-full bg-[#111827] text-[10px] text-white">✓</span></p>
-                <p className="text-[12px] font-semibold text-[#6b7280]">15.2K abonnés</p>
+                <p className="flex items-center gap-1 text-[15px] font-black">Astral4Gamer <span className="grid h-4 w-4 place-items-center rounded-full bg-[#111827] text-[10px] text-white">✓</span></p>
+                <p className="text-[12px] font-semibold text-[#6b7280]">Chaîne officielle</p>
               </div>
-              <button onClick={() => runCommunityAction(() => subscribeYoutubeChannel(readToken()), setActionStatus)} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#dc2626] px-4 text-[12px] font-black text-white transition hover:bg-[#b91c1c]" type="button">
-                <Bell className="h-4 w-4" /> S'abonner
+              <button onClick={() => runCommunityAction(() => subscribeYoutubeChannel(readToken()), setActionStatus)} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#dc2626] px-4 text-[12px] font-black text-white transition hover:bg-[#b91c1c] active:scale-[.98]" type="button">
+                <Bell className="h-4 w-4" /> S'abonner YouTube
               </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <ActionButton icon={<ThumbsUp className="h-4 w-4" />} label="J'aime" onClick={() => runCommunityAction(() => likeYoutubeVideo(readToken(), videoId), setActionStatus)} />
-              <ActionButton icon={<ThumbsDown className="h-4 w-4" />} label="45" />
-              <ActionButton icon={<Share2 className="h-4 w-4" />} label="Partager" onClick={() => shareReplay(videoId, replay.title, setActionStatus)} />
-              <ActionButton icon={<Download className="h-4 w-4" />} label="Publier clip" onClick={() => runCommunityAction(() => shareCommunityClip(readToken(), { replay_id: replay.id, youtube_video_id: videoId, title: replay.title, message: "Clip issu d'un live passe Astral4Gamer." }), setActionStatus)} />
-              <ActionButton icon={<Bookmark className="h-4 w-4" />} label="Enregistrer" />
+              <ActionButton disabled={!canUseYoutubeActions} icon={<ThumbsUp className="h-4 w-4" />} label="J'aime" onClick={() => runCommunityAction(() => likeYoutubeVideo(readToken(), videoId), setActionStatus)} />
+              <ActionButton disabled={!canUseYoutubeActions} icon={<Share2 className="h-4 w-4" />} label="Partager" onClick={() => shareReplay(videoId, replay.title, setActionStatus)} />
+              <ActionButton disabled={!canUseYoutubeActions} icon={<Download className="h-4 w-4" />} label="Publier clip" onClick={() => runCommunityAction(() => shareCommunityClip(readToken(), { replay_id: replay.id, youtube_video_id: videoId, title: replay.title, message: "Clip issu d'un live passé Astral4Gamer." }), setActionStatus)} />
+              <ActionButton icon={<Bookmark className="h-4 w-4" />} label="Enregistrer" onClick={() => setActionStatus("Replay ajouté à ta sélection locale.")} />
               <button className="grid h-9 w-9 place-items-center rounded-full bg-[#f3f4f6] text-[#111827]" type="button" aria-label="Plus d'options">
                 <MoreHorizontal className="h-5 w-5" />
               </button>
@@ -96,7 +101,7 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
               <h2 className="text-[15px] font-black">Description</h2>
               <p className="mt-3 whitespace-pre-line text-[13px] leading-6 text-[#374151]">{replay.description ?? "Replay complet avec les meilleurs moments du match, les actions décisives et le final du tournoi."}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {(replay.hashtags?.length ? replay.hashtags : ["NEXYCUP", "FREEFIRE", "TOURNOI", "ESPORT"]).map((tag) => (
+                {(replay.hashtags ?? []).map((tag) => (
                   <span key={tag} className="text-[12px] font-black uppercase text-[#dc2626]">#{tag}</span>
                 ))}
               </div>
@@ -108,9 +113,9 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
             <section className="rounded-lg border border-[#e5e7eb] bg-white p-5">
               <h2 className="text-[15px] font-black">Informations du tournoi</h2>
               <dl className="mt-4 space-y-3 text-[13px]">
-                <InfoRow label="Mode" value={replay.tournament?.mode ?? "Battle Royale"} />
-                <InfoRow label="Participants" value={getStatValue(replay, "participants", "24 équipes")} />
-                <InfoRow label="Organisateur" value="NEXY Esport" />
+                <InfoRow label="Mode" value={replay.tournament?.mode ?? getStatValue(replay, "mode", "Non renseigné")} />
+                <InfoRow label="Participants" value={getStatValue(replay, "participants", "Non renseigné")} />
+                <InfoRow label="Organisateur" value="Astral4Gamer" />
                 <InfoRow label="Date" value={formatDate(replay.published_at)} />
               </dl>
               <a href="/tournois" className="mt-5 inline-flex h-8 w-full items-center justify-center rounded border border-[#dc2626] text-[12px] font-black text-[#dc2626] transition hover:bg-[#fee2e2]">
@@ -120,22 +125,13 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
           </div>
 
           <section className="mt-5">
-            <div className="flex items-center gap-6">
-              <h2 className="text-[15px] font-black">156 commentaires</h2>
-              <button className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#4b5563]" type="button">
-                <ListFilter className="h-4 w-4" /> Trier par
-              </button>
-            </div>
-            <div className="mt-4 flex gap-3">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#111827] text-sm font-black text-white">A</div>
-              <div className="flex-1 border-b border-[#e5e7eb] pb-2">
-                <input className="h-9 w-full bg-transparent text-[13px] outline-none placeholder:text-[#6b7280]" placeholder="Ajouter un commentaire..." />
+            <div className="rounded-lg border border-dashed border-[#d7dce6] bg-[#fbfcff] p-5">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-[#dc2626]" />
+                <h2 className="text-[15px] font-black">Commentaires</h2>
               </div>
-              <button className="grid h-9 w-9 place-items-center rounded-full bg-[#dc2626] text-white" type="button" aria-label="Envoyer">
-                <Send className="h-4 w-4" />
-              </button>
+              <p className="mt-2 text-sm leading-6 text-[#64748b]">Les commentaires YouTube natifs restent sur YouTube. Utilise “Partager” pour envoyer ce replay à la communauté.</p>
             </div>
-            <Comment author="Épinglé par NEXY Esport" text={`GG à ${firstTeam} pour cette victoire ! Quel match incroyable !`} />
           </section>
         </div>
 
@@ -148,7 +144,7 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
               </button>
             </div>
             <div className="mt-4 space-y-3">
-              {moments.map((moment) => (
+              {moments.length ? moments.map((moment) => (
                 <button key={moment.id} onClick={() => setSeekTo(moment.timestamp_seconds)} className="grid w-full grid-cols-[116px_1fr] gap-3 text-left">
                   <span className="relative overflow-hidden rounded-md bg-[#111827]">
                     <img src={moment.thumbnail_url ?? replay.thumbnail_url ?? ""} alt="" className="aspect-video h-full w-full object-cover" />
@@ -159,7 +155,7 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
                     <b className="mt-1 line-clamp-2 block text-[13px] leading-5">{moment.title}</b>
                   </span>
                 </button>
-              ))}
+              )) : <p className="text-sm leading-6 text-[#64748b]">Aucun moment clé analysé pour ce replay.</p>}
             </div>
           </section>
 
@@ -195,9 +191,9 @@ export function ReplayDetailClient({ replay, recommended }: { replay: Replay; re
   );
 }
 
-function ActionButton({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
+function ActionButton({ icon, label, onClick, disabled }: { icon: ReactNode; label: string; onClick?: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} className="inline-flex h-9 items-center gap-2 rounded-full bg-[#f3f4f6] px-4 text-[12px] font-black text-[#111827] transition hover:bg-[#fee2e2] hover:text-[#dc2626]" type="button">
+    <button disabled={disabled} onClick={onClick} className="inline-flex h-9 items-center gap-2 rounded-full bg-[#f3f4f6] px-4 text-[12px] font-black text-[#111827] transition hover:bg-[#fee2e2] hover:text-[#dc2626] active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#f3f4f6] disabled:hover:text-[#111827]" type="button">
       {icon}
       {label}
     </button>
@@ -239,22 +235,6 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Comment({ author, text }: { author: string; text: string }) {
-  return (
-    <article className="mt-5 flex gap-3">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fee2e2] text-sm font-black text-[#dc2626]">N</div>
-      <div className="min-w-0">
-        <p className="text-[12px] font-black">{author} <span className="font-semibold text-[#6b7280]">il y a 2 jours</span></p>
-        <p className="mt-1 text-[13px] leading-5 text-[#111827]">{text}</p>
-        <div className="mt-2 flex items-center gap-3 text-[12px] font-semibold text-[#6b7280]">
-          <button className="inline-flex items-center gap-1" type="button"><ThumbsUp className="h-4 w-4" /> 54</button>
-          <button className="inline-flex items-center gap-1" type="button"><MessageCircle className="h-4 w-4" /> Répondre</button>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 function getStatValue(replay: Replay, key: string, fallback: string) {
   const value = replay.stats?.[key];
 
@@ -266,28 +246,5 @@ function getStatValue(replay: Replay, key: string, fallback: string) {
 }
 
 function getDisplayMoments(replay: Replay): ReplayMoment[] {
-  const source = replay.moments?.length ? replay.moments : [];
-
-  if (source.length >= 6) {
-    return source.slice(0, 6);
-  }
-
-  const generated = [
-    "Premier kill d'ASTRALxPRO",
-    "1v4 de ASTRALxPRO",
-    "Clutch incroyable de ZEROX",
-    "Double kill de NG_MAHKAL",
-    "BOOYAH ! TEAM SHADOW",
-    "Dernier combat épique"
-  ].map((title, index) => ({
-    id: 9000 + index,
-    replay_id: replay.id,
-    title,
-    timestamp_seconds: [192, 724, 980, 1511, 1965, 2733][index],
-    type: index === 4 ? "booyah" : index === 1 ? "1v4" : "clutch",
-    description: title,
-    thumbnail_url: replay.thumbnail_url
-  })) satisfies ReplayMoment[];
-
-  return [...source, ...generated].slice(0, 6);
+  return (replay.moments ?? []).slice(0, 6);
 }

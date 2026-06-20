@@ -12,6 +12,12 @@ class UpcomingGameController extends Controller
     public function index(UpcomingGamesService $games, SteamService $steam): JsonResponse
     {
         $payload = $games->list();
+        $steamUpcoming = $steam->upcomingReleases(10);
+
+        if ($steamUpcoming !== []) {
+            $payload['result'] = $steamUpcoming;
+        }
+
         $payload['steam_news'] = $steam->officialNews(null, 3);
 
         return response()->json($payload);

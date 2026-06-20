@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookOpen, CheckCircle2, Cloud, FilePlus2, RefreshCw, Send, Settings } from "lucide-react";
-import { SiteHeader } from "@/components/site-header";
+import { BookOpen, CheckCircle2, Cloud, FilePlus2, RefreshCw, Send } from "lucide-react";
+import { AdminShell } from "@/components/admin/admin-shell";
 import { API_BASE_URL } from "@/lib/api";
 
 type IntegrationStatus = {
@@ -13,104 +13,102 @@ type IntegrationStatus = {
   last_sync_at?: string | null;
   last_error?: { endpoint: string; status_code?: number; created_at?: string } | null;
 };
-
 type BlogStats = { drafts: number; published: number; failed: number; blog_table_ready: boolean };
 
 export default function AdminBlogPage() {
-  const [token, setToken] = useState("");
   const [postId, setPostId] = useState("");
   const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null);
   const [stats, setStats] = useState<BlogStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  function authHeaders() {
+    const token = localStorage.getItem("nexy_sanctum_token");
+    if (!token) {
+      window.location.href = "/admin/login";
+      throw new Error("Session admin absente.");
+    }
+    return { Accept: "application/json", Authorization: `Bearer ${token}` };
+  }
 
   async function load() {
-    const storedToken = localStorage.getItem("nexy_sanctum_token") ?? token;
-    setToken(storedToken);
-    if (!storedToken) return;
-
-    const headers = { Accept: "application/json", Authorization: `Bearer ${storedToken}` };
-    const [googleResponse, blogResponse] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/admin/integrations/google`, { headers }),
-      fetch(`${API_BASE_URL}/api/admin/integrations/blog`, { headers })
-    ]);
-    if (googleResponse.ok) setIntegrations(await googleResponse.json());
-    if (blogResponse.ok) setStats(await blogResponse.json());
+    setLoading(true);
+    setMessage("");
+    try {
+      const headers = authHeaders();
+      const [googleResponse, blogResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/admin/integrations/google`, { headers, cache: "no-store" }),
+        fetch(`${API_BASE_URL}/api/admin/integrations/blog`, { headers, cache: "no-store" })
+      ]);
+      if ([googleResponse.status, blogResponse.status].some((status) => status === 401 || status === 403)) {
+        localStorage.removeItem("nexy_sanctum_token");
+        window.location.href = "/admin/login";
+        return;
+      }
+      if (!googleResponse.ok || !blogResponse.ok) throw new Error("Impossible de charger les integrations Blogger.");
+      setIntegrations(await googleResponse.json());
+      setStats(await blogResponse.json());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Chargement impossible.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function post(path: string) {
-    const storedToken = localStorage.getItem("nexy_sanctum_token") ?? token;
-    if (!storedToken) return;
-    await fetch(`${API_BASE_URL}${path}`, {
-      method: "POST",
-      headers: { Accept: "application/json", Authorization: `Bearer ${storedToken}` }
-    });
-    await load();
+  async function post(path: string, success: string) {
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: authHeaders() });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.message || "Operation impossible.");
+      setMessage(success);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Operation impossible.");
+      setLoading(false);
+    }
   }
 
-  useEffect(() => {
-    load().catch(() => undefined);
-  }, []);
+  useEffect(() => { void load(); }, []);
 
-  return (
-    <main className="min-h-screen bg-white text-[#111827]">
-      <SiteHeader />
-      <section className="mx-auto max-w-[1180px] px-6 py-8">
-        <p className="text-xs font-black uppercase text-[#6d28d9]">Admin</p>
-        <h1 className="mt-2 text-4xl font-black tracking-normal">Google Integrations & Blog</h1>
+  return <AdminShell title="Actualites & Blogger" subtitle="Publication et synchronisation des contenus Astral4Gamer.">
+    <div className="mb-5 flex justify-end"><button onClick={() => void load()} disabled={loading} className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 px-4 text-xs text-slate-200 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Actualiser</button></div>
+    {message ? <div className="mb-5 rounded-lg border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-sm text-violet-100">{message}</div> : null}
+    <div className="grid gap-5 xl:grid-cols-2">
+      <section className="rounded-xl border border-white/10 bg-white/[0.045] p-5">
+        <h2 className="flex items-center gap-2 text-base font-semibold"><Cloud className="h-5 w-5 text-violet-300" />Integrations Google</h2>
+        <div className="mt-5 grid gap-3">
+          <StatusRow label="Google People" ok={Boolean(integrations?.google_people_connected)} />
+          <StatusRow label="Blogger OAuth" ok={Boolean(integrations?.blogger_connected)} />
+          <StatusRow label="Blog ID" ok={Boolean(integrations?.blog_id_configured)} value={integrations?.blog_id ?? "Non configure"} />
+        </div>
+        <p className="mt-4 text-xs text-slate-500">Derniere synchronisation: {integrations?.last_sync_at ? new Date(integrations.last_sync_at).toLocaleString("fr-FR") : "Aucune"}</p>
+        {integrations?.last_error ? <p className="mt-3 rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-200">Derniere erreur: {integrations.last_error.endpoint} ({integrations.last_error.status_code})</p> : null}
+      </section>
 
-        <label className="mt-6 flex max-w-xl items-center rounded-lg border border-[#e6e7ee] bg-[#fbfbff] px-4">
-          <Settings className="mr-3 h-5 w-5 text-[#6d28d9]" />
-          <input value={token} onChange={(event) => setToken(event.target.value)} className="h-12 w-full bg-transparent text-sm outline-none" placeholder="Token Sanctum admin" />
-          <button onClick={load} className="ml-3 inline-flex h-9 items-center gap-2 rounded-lg bg-[#111827] px-3 text-xs font-black text-white"><RefreshCw className="h-3.5 w-3.5" /> Sync</button>
-        </label>
-
-        <div className="mt-8 grid gap-5 lg:grid-cols-2">
-          <section className="rounded-lg border border-[#ececf3] bg-[#fbfbff] p-5">
-            <h2 className="flex items-center gap-2 text-lg font-black"><Cloud className="h-5 w-5 text-[#6d28d9]" /> Google Integrations</h2>
-            <div className="mt-5 grid gap-3 text-sm">
-              <StatusRow label="Google People" ok={Boolean(integrations?.google_people_connected)} />
-              <StatusRow label="Blogger" ok={Boolean(integrations?.blogger_connected)} />
-              <StatusRow label="Blog ID configure" ok={Boolean(integrations?.blog_id_configured)} value={integrations?.blog_id ?? "BLOGGER_BLOG_ID"} />
-              <p className="text-[#5b6170]">Derniere synchronisation: {integrations?.last_sync_at ? new Date(integrations.last_sync_at).toLocaleString("fr-FR") : "Aucune"}</p>
-              {integrations?.last_error ? <p className="text-amber-700">Derniere erreur API: {integrations.last_error.endpoint} ({integrations.last_error.status_code})</p> : null}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-[#ececf3] bg-white p-5">
-            <h2 className="flex items-center gap-2 text-lg font-black"><BookOpen className="h-5 w-5 text-[#6d28d9]" /> Blog</h2>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              <Metric label="Brouillons" value={stats?.drafts ?? 0} />
-              <Metric label="Publies" value={stats?.published ?? 0} />
-              <Metric label="Echecs" value={stats?.failed ?? 0} />
-            </div>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button onClick={() => post("/api/admin/blog-posts/generate-weekly-summary")} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#6d28d9] px-4 text-xs font-black text-white"><FilePlus2 className="h-4 w-4" /> Generer article</button>
-              <input value={postId} onChange={(event) => setPostId(event.target.value)} className="h-10 w-28 rounded-lg border border-[#d7dce5] px-3 text-sm font-bold outline-none" placeholder="ID article" />
-              <button onClick={() => postId && post(`/api/admin/blog-posts/${postId}/publish-to-blogger`)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#111827] px-4 text-xs font-black text-white"><Send className="h-4 w-4" /> Publier sur Blogger</button>
-              <a href="/blog" className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#d7dce5] px-4 text-xs font-black"><Send className="h-4 w-4" /> Voir les articles</a>
-            </div>
-          </section>
+      <section className="rounded-xl border border-white/10 bg-white/[0.045] p-5">
+        <h2 className="flex items-center gap-2 text-base font-semibold"><BookOpen className="h-5 w-5 text-violet-300" />Articles en base</h2>
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          <Metric label="Brouillons" value={stats?.drafts ?? 0} />
+          <Metric label="Publies" value={stats?.published ?? 0} />
+          <Metric label="Echecs" value={stats?.failed ?? 0} />
+        </div>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button disabled={loading} onClick={() => void post("/api/admin/blog-posts/generate-weekly-summary", "Article genere dans la base de donnees.")} className="inline-flex h-10 items-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold disabled:opacity-50"><FilePlus2 className="h-4 w-4" />Generer un article</button>
+          <input value={postId} onChange={(event) => setPostId(event.target.value)} className="h-10 w-28 rounded-lg border border-white/10 bg-black/20 px-3 text-sm outline-none" placeholder="ID article" />
+          <button disabled={loading || !postId} onClick={() => void post(`/api/admin/blog-posts/${postId}/publish-to-blogger`, "Article publie sur Blogger.")} className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-xs font-semibold text-[#111827] disabled:opacity-40"><Send className="h-4 w-4" />Publier</button>
+          <a href="/blog" target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 px-4 text-xs text-slate-200"><BookOpen className="h-4 w-4" />Voir le blog</a>
         </div>
       </section>
-    </main>
-  );
+    </div>
+  </AdminShell>;
 }
 
 function StatusRow({ label, ok, value }: { label: string; ok: boolean; value?: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg bg-white px-4 py-3">
-      <span className="font-bold">{label}</span>
-      <span className={`inline-flex items-center gap-2 text-xs font-black ${ok ? "text-[#047857]" : "text-[#9f1239]"}`}>
-        <CheckCircle2 className="h-4 w-4" /> {value ?? (ok ? "Connecte" : "Non connecte")}
-      </span>
-    </div>
-  );
+  return <div className="flex items-center justify-between gap-4 rounded-lg bg-black/15 px-4 py-3 text-sm"><span className="text-slate-300">{label}</span><span className={`inline-flex items-center gap-2 text-xs font-medium ${ok ? "text-emerald-300" : "text-red-300"}`}><CheckCircle2 className="h-4 w-4" />{value ?? (ok ? "Connecte" : "Non connecte")}</span></div>;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg bg-[#f5f3ff] p-4">
-      <p className="text-2xl font-black text-[#6d28d9]">{value}</p>
-      <p className="mt-1 text-xs font-black uppercase text-[#4c1d95]">{label}</p>
-    </div>
-  );
+  return <div className="rounded-lg bg-violet-500/10 p-4"><p className="text-2xl font-semibold text-violet-300">{value}</p><p className="mt-1 text-[10px] uppercase text-slate-400">{label}</p></div>;
 }

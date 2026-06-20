@@ -23,100 +23,25 @@ type TournamentCard = Tournament & {
   fundingGuarantee?: "astral" | "self";
 };
 
-const fallbackTournaments: TournamentCard[] = [
-  {
-    id: 12,
-    title: "NEXY CUP #12 - GRANDE FINALE",
-    mode: "BR - Squad",
-    status: "scheduled",
-    starts_at: "2024-05-25T16:00:00Z",
-    prize_pool: 100000,
-    teams_count: 32,
-    room_id: "BERMUDA",
-    banner: "https://images.unsplash.com/photo-1542751110-97427bbecf20?auto=format&fit=crop&w=720&q=80",
-    fee: "GRATUITE",
-    rewardLabel: "100,000",
-    rewardExtra: "+ Trophees",
-    startsLabel: "25 Mai 2024 16:00",
-    registrationEnd: "25 Mai 2024 - 15:30",
-    badge: "OFFICIEL",
-    fundingGuarantee: "astral"
-  },
-  {
-    id: 13,
-    title: "GUILD WARS SEASON 3",
-    mode: "Guild Wars",
-    status: "scheduled",
-    starts_at: "2024-05-26T18:00:00Z",
-    prize_pool: 150000,
-    teams_count: 16,
-    room_id: "BERMUDA",
-    banner: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=720&q=80",
-    fee: "2,000 FCFA",
-    rewardLabel: "150,000",
-    rewardExtra: "+ Trophees",
-    startsLabel: "26 Mai 2024 18:00",
-    registrationEnd: "26 Mai 2024 - 17:30",
-    badge: "GUILD WARS",
-    fundingGuarantee: "self"
-  },
-  {
-    id: 14,
-    title: "NEXY SOLO CUP",
-    mode: "BR - Solo",
-    status: "scheduled",
-    starts_at: "2024-05-27T14:00:00Z",
-    prize_pool: 30000,
-    teams_count: 48,
-    room_id: "PURGATORY",
-    banner: "https://images.unsplash.com/photo-1535223289827-42f1e9919769?auto=format&fit=crop&w=720&q=80",
-    fee: "GRATUITE",
-    rewardLabel: "30,000",
-    rewardExtra: "+ Cartes cadeaux",
-    startsLabel: "27 Mai 2024 14:00",
-    registrationEnd: "27 Mai 2024 - 13:30",
-    badge: "SOLO",
-    fundingGuarantee: "astral"
-  },
-  {
-    id: 15,
-    title: "DUO CHALLENGE",
-    mode: "BR - Duo",
-    status: "scheduled",
-    starts_at: "2024-05-28T20:00:00Z",
-    prize_pool: 50000,
-    teams_count: 64,
-    room_id: "BERMUDA",
-    banner: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=720&q=80",
-    fee: "1,000 FCFA",
-    rewardLabel: "50,000",
-    rewardExtra: "+ Bonus",
-    startsLabel: "28 Mai 2024 20:00",
-    registrationEnd: "28 Mai 2024 - 19:30",
-    badge: "DUO",
-    fundingGuarantee: "self"
-  }
-];
-
 const filterBlocks = [
   {
     filterKey: "game",
     title: "JEU",
-    items: ["Free Fire", "PUBG Mobile", "Mobile Legends", "Call of Duty Mobile", "Valorant", "Clash Squad"],
-    defaultValue: "Free Fire",
+    items: ["Tous", "Free Fire", "PUBG Mobile", "Mobile Legends", "Call of Duty Mobile", "Valorant", "Clash Squad"],
+    defaultValue: "Tous",
     more: true
   },
   {
     filterKey: "type",
     title: "TYPE",
-    items: ["BR - Squad", "BR - Duo", "BR - Solo", "Clash Squad", "Guild Wars"],
-    defaultValue: "BR - Squad"
+    items: ["Tous", "BR - Squad", "Squad", "BR - Duo", "Duo", "BR - Solo", "Solo", "Clash Squad", "Guild Wars"],
+    defaultValue: "Tous"
   },
   {
     filterKey: "status",
     title: "STATUT",
-    items: ["A venir", "En cours", "Inscription ouverte"],
-    defaultValue: "A venir"
+    items: ["Tous", "A venir", "En cours", "Inscription ouverte", "Terminés"],
+    defaultValue: "Tous"
   },
   {
     filterKey: "price",
@@ -126,51 +51,56 @@ const filterBlocks = [
   }
 ];
 
-const liveTournaments = [
-  {
-    title: "NEXY CUP #11",
-    round: "ROUND 3/7",
-    mode: "BR - Squad",
-    teams: "32 Equipes",
-    time: "00:18:45",
-    image: "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=360&q=80",
-    action: "REGARDER LE LIVE"
-  },
-  {
-    title: "GUILD WARS SEASON 3",
-    round: "ROUND 2/6",
-    mode: "Guild Wars",
-    teams: "16 Guildes",
-    time: "00:12:20",
-    image: "https://images.unsplash.com/photo-1547082299-de196ea013d6?auto=format&fit=crop&w=360&q=80",
-    action: "VOIR LE CLASSEMENT"
-  }
-];
-
-function normalizeTournament(tournament: Tournament, index: number): TournamentCard {
-  const fallback = fallbackTournaments[index % fallbackTournaments.length];
+function normalizeTournament(tournament: Tournament): TournamentCard {
   const rules = tournament.rules ?? {};
   const coverImage = typeof rules.cover_image === "string" ? rules.cover_image : "";
-  const funding = rules.funding === "self" ? "self" : rules.funding === "astral" ? "astral" : fallback.fundingGuarantee;
+  const funding = rules.funding === "self" ? "self" : "astral";
+  const rewardUnit = typeof rules.reward_unit === "string" && rules.reward_unit.trim() ? rules.reward_unit.trim() : "récompenses";
+  const registrationEnd = typeof rules.calendar_slot === "object" && rules.calendar_slot && "ends_at" in rules.calendar_slot
+    ? String((rules.calendar_slot as { ends_at?: unknown }).ends_at ?? "")
+    : "";
 
   return {
     ...tournament,
-    title: tournament.title || fallback.title,
-    mode: tournament.mode || fallback.mode,
-    status: tournament.status || fallback.status,
-    starts_at: tournament.starts_at || fallback.starts_at,
-    prize_pool: tournament.prize_pool || fallback.prize_pool,
-    teams_count: tournament.teams_count ?? tournament.teams?.length ?? fallback.teams_count,
-    room_id: tournament.room_id ?? fallback.room_id,
-    banner: coverImage || fallback.banner,
-    fee: funding === "self" ? "GRATUITE" : "2$",
-    rewardLabel: new Intl.NumberFormat("fr-FR").format(Number(tournament.prize_pool || fallback.prize_pool)),
-    rewardExtra: fallback.rewardExtra,
-    startsLabel: new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(tournament.starts_at || fallback.starts_at)),
-    registrationEnd: fallback.registrationEnd,
-    badge: fallback.badge,
+    title: tournament.title || `Tournoi #${tournament.id}`,
+    mode: tournament.mode || "Tournoi",
+    status: tournament.status || "scheduled",
+    starts_at: tournament.starts_at,
+    prize_pool: tournament.prize_pool || 0,
+    teams_count: tournament.teams_count ?? tournament.teams?.length ?? 0,
+    room_id: tournament.room_id ?? null,
+    banner: coverImage || "/signup-hero.png",
+    fee: funding === "self" ? "GRATUITE" : "2 USD",
+    rewardLabel: new Intl.NumberFormat("fr-FR").format(Number(tournament.prize_pool || 0)),
+    rewardExtra: rewardUnit,
+    startsLabel: tournament.starts_at ? new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(tournament.starts_at)) : "Date à confirmer",
+    registrationEnd: registrationEnd ? new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(registrationEnd)) : "Avant le début",
+    badge: statusBadge(tournament.status),
     fundingGuarantee: funding
   };
+}
+
+function tournamentGame(tournament: TournamentCard) {
+  const rules = tournament.rules ?? {};
+  return typeof rules.game === "string" ? rules.game : "Free Fire";
+}
+
+function statusLabel(status?: string | null) {
+  const normalized = String(status ?? "").toLowerCase();
+
+  if (["live", "ongoing", "in_progress", "en cours"].some((value) => normalized.includes(value))) return "En cours";
+  if (["open", "registration_open", "inscription"].some((value) => normalized.includes(value))) return "Inscription ouverte";
+  if (["completed", "finished", "done", "termine", "terminé"].some((value) => normalized.includes(value))) return "Terminés";
+
+  return "A venir";
+}
+
+function statusBadge(status?: string | null) {
+  const label = statusLabel(status);
+  if (label === "En cours") return "LIVE";
+  if (label === "Inscription ouverte") return "OUVERT";
+  if (label === "Terminés") return "TERMINÉ";
+  return "À VENIR";
 }
 
 export default async function TournoisPage({
@@ -195,13 +125,13 @@ export default async function TournoisPage({
     })
   ) as Record<string, string>;
 
-  let tournaments = fallbackTournaments;
+  let tournaments: TournamentCard[] = [];
 
   try {
     const payload = await getTournaments();
-    tournaments = payload.data.length ? payload.data.slice(0, 4).map(normalizeTournament) : fallbackTournaments;
+    tournaments = payload.data.map(normalizeTournament);
   } catch {
-    tournaments = fallbackTournaments;
+    tournaments = [];
   }
 
   const filteredTournaments = tournaments.filter((tournament) => {
@@ -210,23 +140,24 @@ export default async function TournoisPage({
     const status = selectedFilters.status;
     const price = selectedFilters.price;
 
-    if (game === "Clash Squad" && !tournament.mode.toLowerCase().includes("clash")) return false;
-    if (game !== "Free Fire" && game !== "Clash Squad") return false;
+    const tournamentGameName = tournamentGame(tournament).toLowerCase();
 
-    if (type && type !== tournament.mode) return false;
+    if (game && game !== "Tous") {
+      if (game === "Clash Squad" && !tournament.mode.toLowerCase().includes("clash")) return false;
+      if (game !== "Clash Squad" && !tournamentGameName.includes(game.toLowerCase())) return false;
+    }
 
-    const normalizedStatus = String(tournament.status ?? "").toLowerCase();
-    const derivedStatus =
-      normalizedStatus.includes("live") || normalizedStatus.includes("ongoing") ? "En cours"
-        : normalizedStatus.includes("open") ? "Inscription ouverte"
-          : "A venir";
-    if (status && derivedStatus !== status) return false;
+    if (type && type !== "Tous" && type !== tournament.mode) return false;
+
+    const derivedStatus = statusLabel(tournament.status);
+    if (status && status !== "Tous" && derivedStatus !== status) return false;
 
     if (price === "Gratuit" && tournament.fee !== "GRATUITE") return false;
     if (price === "Payant" && tournament.fee === "GRATUITE") return false;
 
     return true;
   });
+  const liveTournaments = tournaments.filter((tournament) => statusLabel(tournament.status) === "En cours").slice(0, 3);
 
   const activeFiltersCount = filterBlocks.reduce((count, block) => (selectedFilters[block.filterKey] !== block.defaultValue ? count + 1 : count), 0);
 
@@ -298,9 +229,11 @@ export default async function TournoisPage({
             }
           >
             <div className="space-y-3">
-              {liveTournaments.map((item) => (
-                <LiveCard key={item.title} item={item} />
-              ))}
+              {liveTournaments.length ? liveTournaments.map((item) => (
+                <LiveCard key={item.id} item={item} />
+              )) : (
+                <p className="rounded-md bg-[#fbfbfd] p-3 text-xs font-semibold text-[#6b7280]">Aucun tournoi live pour le moment.</p>
+              )}
             </div>
           </Panel>
 
@@ -383,6 +316,9 @@ function FilterBlock({
 }
 
 function TournamentRow({ tournament }: { tournament: TournamentCard }) {
+  const currentStatus = statusLabel(tournament.status);
+  const statusTone = currentStatus === "En cours" ? "red" : currentStatus === "Inscription ouverte" ? "blue" : currentStatus === "Terminés" ? "gray" : "purple";
+
   return (
     <article className="grid overflow-hidden rounded-md border border-[#ececf3] bg-white shadow-[0_8px_22px_rgba(16,24,40,.045)] lg:grid-cols-[185px_minmax(0,1fr)_205px]">
       <div className="relative min-h-[124px] overflow-hidden bg-[#111827]">
@@ -394,8 +330,8 @@ function TournamentRow({ tournament }: { tournament: TournamentCard }) {
       <div className="p-3.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <h2 className="text-sm font-black uppercase">{tournament.title}</h2>
-          <Badge tone="purple">À VENIR</Badge>
-          {tournament.badge ? <Badge tone={tournament.badge === "GUILD WARS" ? "gold" : "blue"}>{tournament.badge}</Badge> : null}
+          <Badge tone={statusTone}>{currentStatus}</Badge>
+          {tournament.badge ? <Badge tone={tournament.badge === "LIVE" ? "red" : tournament.badge === "TERMINÉ" ? "gray" : "blue"}>{tournament.badge}</Badge> : null}
           <Badge tone={tournament.fundingGuarantee === "astral" ? "red" : "gray"}>
             {tournament.fundingGuarantee === "astral" ? "ASTRAL4GAMER GARANTIT CE TOURNOI" : "NON GARANTIE"}
           </Badge>
@@ -472,26 +408,26 @@ function Panel({ title, children }: { title: ReactNode; children: ReactNode }) {
   );
 }
 
-function LiveCard({ item }: { item: (typeof liveTournaments)[number] }) {
+function LiveCard({ item }: { item: TournamentCard }) {
   return (
     <article>
       <div className="grid grid-cols-[74px_1fr] gap-3">
         <div className="relative aspect-square overflow-hidden rounded-md bg-[#111827]">
-          <img src={item.image} alt="" className="h-full w-full object-cover" />
+          <img src={item.banner} alt="" className="h-full w-full object-cover" />
           <span className="absolute left-1.5 top-1.5 rounded bg-red-600 px-1.5 py-0.5 text-[8px] font-black text-white">LIVE</span>
         </div>
         <div>
           <h3 className="text-xs font-black">{item.title}</h3>
-          <p className="mt-1 text-xs font-black text-[#7c19f4]">{item.round}</p>
+          <p className="mt-1 text-xs font-black text-[#7c19f4]">{item.startsLabel}</p>
           <p className="mt-1 flex items-center gap-1.5 text-xs"><Users className="h-3.5 w-3.5" /> {item.mode}</p>
-          <p className="mt-1 flex items-center gap-1.5 text-xs"><Users className="h-3.5 w-3.5" /> {item.teams}</p>
+          <p className="mt-1 flex items-center gap-1.5 text-xs"><Users className="h-3.5 w-3.5" /> {item.teams_count ?? 0} équipes</p>
         </div>
       </div>
       <div className="mt-2 flex items-center justify-between text-xs">
-        <span>Fin du round</span>
-        <b className="text-red-500">{item.time}</b>
+        <span>Statut</span>
+        <b className="text-red-500">LIVE</b>
       </div>
-      <a href="/live" className="mt-2 flex h-8 items-center justify-center rounded-md bg-[#7c19f4] text-[10px] font-black text-white">{item.action}</a>
+      <a href={`/tournois/detail?id=${item.id}`} className="mt-2 flex h-8 items-center justify-center rounded-md bg-[#7c19f4] text-[10px] font-black text-white">VOIR LE TOURNOI</a>
     </article>
   );
 }

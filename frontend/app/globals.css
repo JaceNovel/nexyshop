@@ -86,7 +86,8 @@ textarea {
 
 .interactive-icon,
 .interactive-button {
-  transition: background-color .18s ease, box-shadow .18s ease, color .18s ease, transform .18s ease;
+  touch-action: manipulation;
+  transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease, color .18s ease, opacity .18s ease, transform .18s ease;
 }
 
 .interactive-icon:hover,
@@ -96,6 +97,22 @@ textarea {
 
 .interactive-button:hover {
   box-shadow: 0 10px 24px rgba(11, 103, 240, .18);
+}
+
+.interactive-icon:active,
+.interactive-button:active,
+button:not(:disabled):active,
+a:active {
+  transform: scale(.97);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(11, 103, 240, .28);
+  outline-offset: 2px;
 }
 
 .soft-pop {
@@ -117,6 +134,16 @@ textarea {
 }
 
 @media (max-width: 767px) {
+  body {
+    min-width: 320px;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
   main > section[class*="px-6"],
   main > article[class*="px-6"] {
     padding-left: .75rem !important;
@@ -157,5 +184,16 @@ textarea {
 
   .interactive-link::after {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
   }
 }

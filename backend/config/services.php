@@ -38,10 +38,16 @@ return [
         'unipin' => ['key' => env('UNIPIN_KEY')],
     ],
     'shop' => [
-        'margin_percent' => env('SHOP_MARGIN_PERCENT', 20),
+        'margin_percent' => env('SHOP_MARGIN_PERCENT', 30),
         'margin_fixed' => env('SHOP_MARGIN_FIXED', 0),
         'margin_minimum' => env('SHOP_MARGIN_MINIMUM', 0),
         'price_decimals' => env('SHOP_PRICE_DECIMALS', 2),
+    ],
+    'reseller' => [
+        'panel_url' => env('RESELLER_PANEL_URL', 'https://www.astral4gamer.com/panel'),
+        'default_margin_percent' => env('RESELLER_DEFAULT_MARGIN_PERCENT', 10),
+        'minimum_topup' => env('RESELLER_MINIMUM_TOPUP', 10),
+        'low_balance_threshold' => env('RESELLER_LOW_BALANCE_THRESHOLD', 10),
     ],
     'hlgaming' => [
         'useruid' => env('HLGAMING_USERUID'),
@@ -97,6 +103,7 @@ return [
     ],
     'discord' => [
         'enabled' => env('DISCORD_NOTIFICATIONS_ENABLED', false),
+        'bot_token' => env('ASTRAL_BOT_BACKEND_TOKEN'),
         'username' => env('DISCORD_WEBHOOK_USERNAME', 'Astral4Gamer'),
         'avatar_url' => env('DISCORD_WEBHOOK_AVATAR_URL'),
         'timeout' => env('DISCORD_WEBHOOK_TIMEOUT', 8),
@@ -121,6 +128,9 @@ return [
             'public_key' => env('MONEROO_PUBLIC_KEY'),
             'webhook_secret' => env('MONEROO_WEBHOOK_SECRET'),
             'base_url' => env('MONEROO_BASE_URL', 'https://api.moneroo.io'),
+            'default_currency' => env('MONEROO_DEFAULT_CURRENCY', 'USD'),
+            'default_methods' => array_values(array_filter(array_map('trim', explode(',', (string) env('MONEROO_DEFAULT_METHODS', ''))))),
+            'methods_by_currency' => json_decode((string) env('MONEROO_METHODS_BY_CURRENCY', '{}'), true) ?: [],
             'return_url' => env('MONEROO_RETURN_URL', env('APP_BACKEND_URL', env('APP_URL', 'http://localhost:8000')).'/api/payments/moneroo/return'),
             'frontend_return_url' => env('MONEROO_FRONTEND_RETURN_URL', env('APP_FRONTEND_URL', env('FRONTEND_URL', 'http://localhost:3000')).'/checkout/return'),
         ],

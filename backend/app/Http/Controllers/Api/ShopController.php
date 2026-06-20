@@ -5,18 +5,23 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\DispatchSupplierOrder;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Supplier;
+use App\Models\SupplierOrder;
 use App\Models\SupplierProduct;
 use App\Models\Tournament;
 use App\Services\Shop\PricingService;
 use App\Services\Suppliers\FazerCardsCatalogSyncService;
 use App\Services\Suppliers\Item4GamerCatalogSyncService;
 use App\Services\Suppliers\SupplierManager;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
 class ShopController extends Controller
 {
+    private const HIDDEN_PUBLIC_TYPES = ['game-key', 'game-keys'];
+
     public function __construct(private readonly PricingService $pricing)
     {
     }
@@ -24,24 +29,42 @@ class ShopController extends Controller
     public function home()
     {
         return [
-            'products' => Product::whereActive(true)->where('price', '>', 0)->limit(8)->get(),
+            'products' => $this->publicCatalogQuery()->limit(8)->get(),
             'tournaments' => Tournament::latest('starts_at')->limit(6)->get(),
         ];
     }
 
     public function products(Request $request)
     {
-        $query = Product::query()
-            ->whereActive(true)
-            ->where('price', '>', 0)
+        $query = $this->publicCatalogQuery()
             ->with('primarySupplierProduct')
             ->latest();
 
         if ($search = $request->query('q')) {
-            $query->where(function ($builder) use ($search) {
+            $terms = collect(preg_split('/\s+/', trim((string) $search)) ?: [])
+                ->map(fn ($term) => trim((string) $term))
+                ->filter()
+                ->take(6)
+                ->values();
+
+            $query->where(function ($builder) use ($search, $terms) {
                 $builder->where('name', 'like', "%{$search}%")
                     ->orWhere('game', 'like', "%{$search}%")
-                    ->orWhere('sku', 'like', "%{$search}%");
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('metadata->category', 'like', "%{$search}%")
+                    ->orWhere('metadata->type', 'like', "%{$search}%")
+                    ->orWhere('metadata->description', 'like', "%{$search}%");
+
+                foreach ($terms as $term) {
+                    $builder->orWhere(function ($nested) use ($term) {
+                        $nested->where('name', 'like', "%{$term}%")
+                            ->orWhere('game', 'like', "%{$term}%")
+                            ->orWhere('sku', 'like', "%{$term}%")
+                            ->orWhere('metadata->category', 'like', "%{$term}%")
+                            ->orWhere('metadata->type', 'like', "%{$term}%")
+                            ->orWhere('metadata->description', 'like', "%{$term}%");
+                    });
+                }
             });
         }
 
@@ -64,15 +87,15 @@ class ShopController extends Controller
             ->through(fn (Product $product) => $this->serializeProduct($product));
     }
 
-    public function product(Product $product)
+    public function product(string $product)
     {
-        abort_unless($product->active, 404);
+        $product = $this->resolvePublicProduct($product);
+
+        abort_unless($product->active && ! $this->isHiddenPublicType($product), 404);
 
         return [
             'data' => $this->serializeProduct($product->load(['primarySupplierProduct', 'supplierProducts'])),
-            'recommended' => Product::query()
-                ->whereActive(true)
-                ->where('price', '>', 0)
+            'recommended' => $this->publicCatalogQuery()
                 ->with('primarySupplierProduct')
                 ->whereKeyNot($product->id)
                 ->where('game', $product->game)
@@ -84,9 +107,7 @@ class ShopController extends Controller
 
     public function categories()
     {
-        $products = Product::query()
-            ->whereActive(true)
-            ->where('price', '>', 0)
+        $products = $this->publicCatalogQuery()
             ->get();
 
         return $products
@@ -161,9 +182,14 @@ class ShopController extends Controller
 
         $product = Product::with('supplierProducts')->findOrFail($data['product_id']);
         $quantity = (int) ($data['quantity'] ?? 1);
-        $supplierProduct = $this->selectedSupplierProduct($product, $data['variation_id'] ?? null);
-        $supplierCost = (float) ($supplierProduct?->cost ?: $product->price);
-        $unitPrice = $this->promoPrice($product, $this->pricing->retailPrice($supplierCost));
+        $manualVariation = $this->selectedManualVariation($product, $data['variation_id'] ?? null);
+        $supplierProduct = $manualVariation ? null : $this->selectedSupplierProduct($product, $data['variation_id'] ?? null);
+        $supplierCost = $manualVariation
+            ? (float) ($manualVariation['price'] ?? 0)
+            : (float) ($supplierProduct?->cost ?: $product->price);
+        $unitPrice = $manualVariation
+            ? (float) ($manualVariation['price'] ?? 0)
+            : $this->promoPrice($product, $this->pricing->retailPrice($supplierCost));
 
         $order = Order::create([
             'product_id' => $data['product_id'],
@@ -174,13 +200,16 @@ class ShopController extends Controller
             'currency' => $product->currency,
             'status' => 'pending_payment',
             'metadata' => [
-                'variation_id' => $supplierProduct?->external_sku,
-                'variation_name' => $supplierProduct?->metadata['name'] ?? null,
-                'supplier' => $product->metadata['supplier'] ?? 'fazercards',
+                'variation_id' => $manualVariation['variation_id'] ?? $supplierProduct?->external_sku,
+                'variation_name' => $manualVariation['name'] ?? $supplierProduct?->metadata['name'] ?? null,
+                'supplier' => $product->metadata['supplier'] ?? 'manual',
                 'quantity' => $quantity,
                 'supplier_cost' => $supplierCost,
                 'margin_amount' => $unitPrice - $supplierCost,
                 'promotion' => $this->activePromotion($product),
+                'manual_fulfillment' => (bool) ($product->metadata['manual_fulfillment'] ?? false),
+                'fulfillment_status' => (bool) ($product->metadata['manual_fulfillment'] ?? false) ? 'awaiting_payment' : null,
+                'required_fields' => $product->metadata['required_fields'] ?? [],
                 'supplier_fields' => $this->supplierFields($product, $data),
             ],
         ]);
@@ -204,9 +233,14 @@ class ShopController extends Controller
 
         $product = Product::with('supplierProducts')->findOrFail($data['product_id']);
         $quantity = (int) ($data['quantity'] ?? 1);
-        $supplierProduct = $this->selectedSupplierProduct($product, $data['variation_id'] ?? null);
-        $supplierCost = (float) ($supplierProduct?->cost ?: $product->price);
-        $unitPrice = $this->promoPrice($product, $this->pricing->retailPrice($supplierCost));
+        $manualVariation = $this->selectedManualVariation($product, $data['variation_id'] ?? null);
+        $supplierProduct = $manualVariation ? null : $this->selectedSupplierProduct($product, $data['variation_id'] ?? null);
+        $supplierCost = $manualVariation
+            ? (float) ($manualVariation['price'] ?? 0)
+            : (float) ($supplierProduct?->cost ?: $product->price);
+        $unitPrice = $manualVariation
+            ? (float) ($manualVariation['price'] ?? 0)
+            : $this->promoPrice($product, $this->pricing->retailPrice($supplierCost));
 
         $order = Order::create([
             'product_id' => $product->id,
@@ -216,15 +250,18 @@ class ShopController extends Controller
             'currency' => $product->currency,
             'status' => 'pending_payment',
             'metadata' => [
-                'variation_id' => $supplierProduct?->external_sku,
-                'variation_name' => $supplierProduct?->metadata['name'] ?? null,
-                'supplier' => $product->metadata['supplier'] ?? 'item4gamer',
+                'variation_id' => $manualVariation['variation_id'] ?? $supplierProduct?->external_sku,
+                'variation_name' => $manualVariation['name'] ?? $supplierProduct?->metadata['name'] ?? null,
+                'supplier' => $product->metadata['supplier'] ?? 'manual',
                 'checkout_mode' => 'guest',
                 'payment_pending' => true,
                 'quantity' => $quantity,
                 'supplier_cost' => $supplierCost,
                 'margin_amount' => $unitPrice - $supplierCost,
                 'promotion' => $this->activePromotion($product),
+                'manual_fulfillment' => (bool) ($product->metadata['manual_fulfillment'] ?? false),
+                'fulfillment_status' => (bool) ($product->metadata['manual_fulfillment'] ?? false) ? 'awaiting_payment' : null,
+                'required_fields' => $product->metadata['required_fields'] ?? [],
                 'supplier_fields' => $this->supplierFields($product, $data),
             ],
         ]);
@@ -233,6 +270,40 @@ class ShopController extends Controller
             'order' => $order,
             'next_step' => 'payment_provider_to_integrate',
         ], 201);
+    }
+
+    public function orderDelivery(Request $request, Order $order)
+    {
+        $reference = trim((string) ($request->query('payment_reference') ?: $request->query('paymentId')));
+
+        abort_if($reference === '', 404, 'Commande introuvable.');
+        abort_unless(
+            Payment::query()->where('order_id', $order->id)->where('reference', $reference)->exists(),
+            404,
+            'Commande introuvable.'
+        );
+
+        $order->refresh();
+        $supplierOrder = SupplierOrder::query()
+            ->where('order_id', $order->id)
+            ->latest()
+            ->first();
+
+        return response()->json([
+            'order' => [
+                'id' => $order->id,
+                'status' => $order->status,
+                'fulfillment_status' => $order->metadata['fulfillment_status'] ?? null,
+                'product_id' => $order->product_id,
+                'amount' => $order->amount,
+                'currency' => $order->currency,
+            ],
+            'supplier_order' => $supplierOrder ? [
+                'external_id' => $supplierOrder->external_id,
+                'status' => $supplierOrder->status,
+            ] : null,
+            'delivery_codes' => $order->metadata['delivery_codes'] ?? [],
+        ]);
     }
 
     private function item4GamerSupplier(): Supplier
@@ -254,18 +325,25 @@ class ShopController extends Controller
     private function serializeProduct(Product $product): array
     {
         $product->loadMissing('supplierProducts');
-        $variations = $product->supplierProducts
+        $manualVariations = $this->manualVariations($product);
+        $variations = $manualVariations->isNotEmpty()
+            ? $manualVariations
+            : $product->supplierProducts
             ->where('active', true)
             ->sortBy('cost')
             ->map(function (SupplierProduct $supplierProduct) use ($product) {
-                $variationPrice = (float) ($supplierProduct->metadata['retail_price'] ?? 0);
+                $variationPrice = 0;
 
-                if ($variationPrice <= 0 && (float) $supplierProduct->cost > 0) {
+                if ((float) $supplierProduct->cost > 0) {
                     $variationPrice = $this->pricing->retailPrice($supplierProduct->cost);
                 }
 
                 if ($variationPrice <= 0 && (float) $product->price > 0) {
                     $variationPrice = $this->pricing->retailPrice($product->price);
+                }
+
+                if ($variationPrice <= 0) {
+                    $variationPrice = (float) ($supplierProduct->metadata['retail_price'] ?? 0);
                 }
 
                 $retailPrice = $this->promoPrice($product, $variationPrice);
@@ -282,11 +360,21 @@ class ShopController extends Controller
             ->values();
         $defaultVariationId = $product->primarySupplierProduct?->external_sku
             ?? ($variations->first()['variation_id'] ?? null);
-        $priceRange = $product->metadata['price_range'] ?? [
-            'min' => $this->pricing->retailPrice($product->price),
-            'max' => $this->pricing->retailPrice($product->price),
-        ];
-        $regularRetailPrice = (float) $product->price > 0 ? $this->pricing->retailPrice($product->price) : 0;
+        $variationRetailPrices = $variations->pluck('regular_price')
+            ->filter(fn ($price) => (float) $price > 0)
+            ->values();
+        $priceRange = $variationRetailPrices->isNotEmpty()
+            ? [
+                'min' => (float) $variationRetailPrices->min(),
+                'max' => (float) $variationRetailPrices->max(),
+            ]
+            : [
+                'min' => $manualVariations->isNotEmpty() ? (float) $product->price : $this->pricing->retailPrice($product->price),
+                'max' => $manualVariations->isNotEmpty() ? (float) $product->price : $this->pricing->retailPrice($product->price),
+            ];
+        $regularRetailPrice = (float) $product->price > 0
+            ? ($manualVariations->isNotEmpty() ? (float) $product->price : $this->pricing->retailPrice($product->price))
+            : 0;
         $visibleRetailPrice = $regularRetailPrice;
 
         if ($visibleRetailPrice <= 0 && $variations->isNotEmpty()) {
@@ -365,6 +453,41 @@ class ShopController extends Controller
         return $activeSupplierProducts->sortBy('cost')->first();
     }
 
+    private function selectedManualVariation(Product $product, ?string $variationId): ?array
+    {
+        $variations = $this->manualVariations($product);
+
+        if ($variations->isEmpty()) {
+            return null;
+        }
+
+        if ($variationId) {
+            $selected = $variations->firstWhere('variation_id', $variationId);
+
+            if ($selected) {
+                return $selected;
+            }
+        }
+
+        return $variations->first();
+    }
+
+    private function manualVariations(Product $product)
+    {
+        return collect($product->metadata['manual_variations'] ?? [])
+            ->filter(fn ($item) => is_array($item) && ! empty($item['variation_id']) && ! empty($item['name']))
+            ->map(fn (array $item, int $index) => [
+                'id' => 'manual-'.$product->id.'-'.$index,
+                'variation_id' => (string) $item['variation_id'],
+                'name' => (string) $item['name'],
+                'price' => round((float) ($item['price'] ?? 0), 2),
+                'regular_price' => round((float) ($item['price'] ?? 0), 2),
+                'currency' => (string) ($item['currency'] ?? $product->currency),
+            ])
+            ->sortBy('price')
+            ->values();
+    }
+
     private function supplierFields(Product $product, array $data): array
     {
         $fields = collect($product->metadata['required_fields'] ?? [])
@@ -385,6 +508,36 @@ class ShopController extends Controller
             ->mapWithKeys(fn (string $key) => [$key => $provided[$key] ?? $fallback])
             ->filter(fn ($value) => $value !== null && $value !== '')
             ->all();
+    }
+
+    private function resolvePublicProduct(string $value): Product
+    {
+        if (ctype_digit($value)) {
+            return Product::findOrFail((int) $value);
+        }
+
+        return Product::query()
+            ->where(function (Builder $builder) use ($value) {
+                $builder->where('sku', $value)
+                    ->orWhere('metadata->permalink', $value);
+            })
+            ->firstOrFail();
+    }
+
+    private function publicCatalogQuery(): Builder
+    {
+        return Product::query()
+            ->whereActive(true)
+            ->where('price', '>', 0)
+            ->where(function (Builder $builder) {
+                $builder->whereNull('metadata->type')
+                    ->orWhereNotIn('metadata->type', self::HIDDEN_PUBLIC_TYPES);
+            });
+    }
+
+    private function isHiddenPublicType(Product $product): bool
+    {
+        return in_array((string) ($product->metadata['type'] ?? 'top-up'), self::HIDDEN_PUBLIC_TYPES, true);
     }
 
     private function activePromotion(Product $product): ?array

@@ -43,6 +43,7 @@ export function DiscordFollowPopup() {
   const [reason, setReason] = useState<"visit" | "signup" | "payment">("visit");
 
   useEffect(() => {
+    if (pathname.startsWith("/admin") || pathname.startsWith("/panel")) return;
     if (hasJoinedDiscord() || isPostponed()) return;
 
     const params = new URLSearchParams(window.location.search);
@@ -83,7 +84,7 @@ export function DiscordFollowPopup() {
     }
   }, [pathname]);
 
-  if (!open) return null;
+  if (pathname.startsWith("/admin") || pathname.startsWith("/panel") || !open) return null;
 
   const title = reason === "payment" ? "Paiement validé, rejoins la communauté" : reason === "signup" ? "Ton compte est prêt" : "Rejoins Astral4Gamer sur Discord";
   const text = reason === "payment"

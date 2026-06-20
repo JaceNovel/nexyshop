@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Footer } from "@/components/site-footer";
 
-const hiddenFooterPrefixes = ["/profil", "/profil-public", "/profile"];
+const hiddenFooterPrefixes = ["/admin", "/panel", "/profil", "/profil-public", "/profile"];
 
 export function AppFooter() {
   const pathname = usePathname();

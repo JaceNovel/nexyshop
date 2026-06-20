@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import type { ReactNode } from "react";
 import { Headphones, Mail, PackageSearch, Send, UserRound } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.astral4gamer.com";
 
 export default function ContactPage() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");

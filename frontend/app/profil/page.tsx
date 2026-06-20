@@ -432,7 +432,38 @@ export default function ProfilePage() {
     <main className="min-h-screen bg-white text-[#111827]">
       <SiteHeader />
 
-      <section className="w-full px-3 py-5 sm:px-5">
+      <MobileFreeFireProfile
+        avatar={avatar}
+        banner={banner}
+        name={name}
+        playerUid={playerUid}
+        game={typeof game === "string" && game.trim() ? game.trim() : "Free Fire"}
+        email={email}
+        country={typeof country === "string" ? country : null}
+        memberSince={memberSince}
+        brRank={brRank}
+        csRank={csRank}
+        rankPoints={rankPoints}
+        csRankPoints={csRankPoints}
+        rankProgress={rankProgress}
+        stats={realStats}
+        quickStats={realQuickStats}
+        activities={realActivities}
+        guildInfo={guildInfo}
+        freeFireProfile={freeFireProfile}
+        recentVideos={recentVideos}
+        shareUsername={shareUsername}
+        likesStatus={likesStatus}
+        likesLoading={likesLoading}
+        editOpen={editProfileOpen}
+        onEdit={() => setEditProfileOpen(true)}
+        onCloseEdit={() => setEditProfileOpen(false)}
+        onDisconnect={handleDisconnect}
+        onLikesRequest={handleLikesRequest}
+        onUpload={handleProfileImageUpload}
+      />
+
+      <section className="hidden w-full px-3 py-3 md:block sm:px-5 sm:py-5">
         <section className="relative overflow-hidden rounded-lg border border-[#1f2937] bg-black text-white shadow-[0_24px_60px_rgba(0,0,0,.22)]">
           {banner ? (
             <>
@@ -444,17 +475,17 @@ export default function ProfilePage() {
           )}
           <div className="absolute inset-0 bg-gradient-to-r from-black via-black/88 to-black/48" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/35" />
-          <div className="relative grid min-h-[340px] gap-6 p-8 lg:grid-cols-[1fr_310px]">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center">
-              <div className="grid h-40 w-40 shrink-0 place-items-center rounded-full border-[6px] border-[#e52b2f] bg-white/10 shadow-[0_20px_50px_rgba(229,43,47,.25)]">
-                {avatar ? <img src={avatar} alt="" className="h-[136px] w-[136px] rounded-full object-cover" /> : <AvatarFallback name={name} size="large" />}
+          <div className="relative grid min-h-[340px] gap-5 p-4 sm:p-6 lg:grid-cols-[1fr_310px] lg:p-8">
+            <div className="flex min-w-0 flex-col items-center gap-4 text-center sm:gap-6 md:flex-row md:items-center md:text-left">
+              <div className="grid h-28 w-28 shrink-0 place-items-center rounded-full border-4 border-[#e52b2f] bg-white/10 shadow-[0_20px_50px_rgba(229,43,47,.25)] sm:h-36 sm:w-36 sm:border-[6px] lg:h-40 lg:w-40">
+                {avatar ? <img src={avatar} alt="" className="h-24 w-24 rounded-full object-cover sm:h-[120px] sm:w-[120px] lg:h-[136px] lg:w-[136px]" /> : <AvatarFallback name={name} size="large" />}
               </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-4xl font-black tracking-normal">{name}</h1>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start md:gap-3">
+                  <h1 className="max-w-full break-words text-2xl font-black tracking-normal sm:text-3xl lg:text-4xl">{name}</h1>
                   <CheckCircle2 className="h-6 w-6 fill-[#e52b2f] text-white" />
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm font-bold text-white/78">
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-white/78 md:justify-start sm:text-sm">
                   <span className="rounded border border-[#e52b2f] bg-[#e52b2f] px-3 py-1 text-xs font-black text-white">JOUEUR PRO</span>
                   <span>ID: {playerUid}</span>
                   <CopyToClipboardButton value={playerUid} className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-white/5 text-white/80 transition hover:bg-white/10" label="Copier l’ID" />
@@ -462,18 +493,18 @@ export default function ProfilePage() {
                 <p className="mt-4 text-sm font-semibold text-white/78">
                   Joueur {typeof game === "string" && game.trim() ? game.trim() : "Free Fire"} • Créateur de contenu • Compétiteur
                 </p>
-                <p className="mt-2 flex flex-wrap items-center gap-4 text-sm text-white/70">
+                <p className="mt-2 flex flex-wrap items-center justify-center gap-2 break-all text-xs text-white/70 md:justify-start sm:gap-4 sm:text-sm">
                   {typeof country === "string" && country.trim() ? (
                     <CountryFlag code={country} label={country} />
                   ) : null}
                   {memberSince ? <span>📅 {memberSince}</span> : null}
                   <span>{email}</span>
                 </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-		                  <button type="button" onClick={() => setEditProfileOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#e52b2f] px-5 text-sm font-black text-white"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
+                <div className="mt-5 grid grid-cols-[minmax(0,1fr)_44px] gap-2 sm:flex sm:flex-wrap sm:gap-3 md:mt-6">
+		                  <button type="button" onClick={() => setEditProfileOpen(true)} className="interactive-button col-span-2 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#e52b2f] px-4 text-xs font-black text-white active:scale-[.98] sm:col-auto sm:px-5 sm:text-sm"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
 	                  <ShareProfileButton
                       username={shareUsername}
-                      className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-5 text-sm font-black text-white backdrop-blur transition hover:bg-white/15"
+                      className="interactive-button inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 text-xs font-black text-white backdrop-blur transition active:scale-[.98] hover:bg-white/15 sm:px-5 sm:text-sm"
                     />
 		                  <div className="relative">
                     <button
@@ -486,7 +517,7 @@ export default function ProfilePage() {
                       <MoreHorizontal className="h-5 w-5" />
                     </button>
                     {profileMenuOpen ? (
-                      <div className="absolute bottom-[52px] left-0 z-50 w-[310px] overflow-hidden rounded-lg border border-white/15 bg-[#0a0f18] py-2 text-sm font-black text-white shadow-[0_18px_44px_rgba(0,0,0,.42)]">
+                      <div className="absolute bottom-[52px] right-0 z-50 w-[min(310px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-white/15 bg-[#0a0f18] py-2 text-sm font-black text-white shadow-[0_18px_44px_rgba(0,0,0,.42)] sm:left-0 sm:right-auto">
 	                        <button type="button" onClick={() => { setEditProfileOpen(true); setProfileMenuOpen(false); }} className="flex h-11 w-full items-center gap-3 whitespace-nowrap px-4 text-left transition hover:bg-white/10">
 	                          <Edit3 className="h-4 w-4 text-[#ff5961]" />
 	                          Changer photo de la bannière
@@ -650,6 +681,232 @@ export default function ProfilePage() {
   );
 }
 
+function MobileFreeFireProfile({
+  avatar,
+  banner,
+  name,
+  playerUid,
+  game,
+  email,
+  country,
+  memberSince,
+  brRank,
+  csRank,
+  rankPoints,
+  csRankPoints,
+  rankProgress,
+  stats,
+  quickStats,
+  activities,
+  guildInfo,
+  freeFireProfile,
+  recentVideos,
+  shareUsername,
+  likesStatus,
+  likesLoading,
+  editOpen,
+  onEdit,
+  onCloseEdit,
+  onDisconnect,
+  onLikesRequest,
+  onUpload
+}: {
+  avatar: string | null;
+  banner: string | null;
+  name: string;
+  playerUid: string;
+  game: string;
+  email: string;
+  country: string | null;
+  memberSince: string | null;
+  brRank: ReturnType<typeof getFreeFireRank>;
+  csRank: ReturnType<typeof getFreeFireRankByCode>;
+  rankPoints: number;
+  csRankPoints: number;
+  rankProgress: string;
+  stats: ReadonlyArray<readonly [string, string, string, LucideIcon]>;
+  quickStats: ReadonlyArray<readonly [string, string, LucideIcon]>;
+  activities: string[];
+  guildInfo: Record<string, unknown> | null | undefined;
+  freeFireProfile: StoredFreeFireProfile | null;
+  recentVideos: RecentYoutubeVideo[];
+  shareUsername: string;
+  likesStatus: string | null;
+  likesLoading: boolean;
+  editOpen: boolean;
+  onEdit: () => void;
+  onCloseEdit: () => void;
+  onDisconnect: () => void;
+  onLikesRequest: () => void;
+  onUpload: (kind: "avatar" | "banner", file: File | null) => void;
+}) {
+  const guildName = displayValue(valueFrom(guildInfo, "GuildName"));
+  const hasGuild = guildName !== "N/A";
+
+  return (
+    <section className="md:hidden bg-[#f6f7fb] px-3 pb-6 pt-3">
+      <section className="relative overflow-hidden rounded-2xl bg-[#070a12] text-white shadow-[0_18px_40px_rgba(15,23,42,.18)]">
+        {banner ? <img src={banner} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25 blur-[1px]" /> : null}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,10,18,.55),#070a12_72%)]" />
+        <div className="relative p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl border-2 border-[#e52b2f] bg-white/10 shadow-[0_12px_28px_rgba(229,43,47,.22)]">
+                {avatar ? <img src={avatar} alt="" className="h-[70px] w-[70px] rounded-xl object-cover" /> : <AvatarFallback name={name} size="small" />}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h1 className="truncate text-[22px] font-black leading-tight">{name}</h1>
+                  <CheckCircle2 className="h-5 w-5 shrink-0 fill-[#e52b2f] text-white" />
+                </div>
+                <p className="mt-1 text-xs font-bold text-white/65">{game}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="rounded-md bg-[#e52b2f] px-2 py-1 text-[10px] font-black uppercase">Pro</span>
+                  <span className="truncate text-xs font-black text-white/85">ID: {playerUid}</span>
+                  <CopyToClipboardButton value={playerUid} className="grid h-7 w-7 place-items-center rounded-lg bg-white/10 text-white" label="Copier l’ID" />
+                </div>
+              </div>
+            </div>
+            <button type="button" onClick={onDisconnect} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/10 text-white active:scale-[.96]" aria-label="Déconnexion">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-[1fr_auto] items-end gap-3 rounded-2xl border border-white/10 bg-white/8 p-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase text-white/45">Rang Battle Royale</p>
+              <div className="mt-2 flex items-center gap-3">
+                <RankEmblem rank={brRank} />
+                <div className="min-w-0">
+                  <h2 className="truncate text-xl font-black uppercase">{brRank.name}</h2>
+                  <p className="text-sm font-black text-[#ff5961]">{brRank.subLabel} · {displayValue(rankPoints)} pts</p>
+                </div>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-white/12">
+                <div className="h-2 rounded-full bg-[#ff2532]" style={{ width: rankProgress }} />
+              </div>
+              <p className="mt-1 text-[11px] font-bold text-white/50">Prochain : {brRank.nextName} · {brRank.remainingText}</p>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2 text-right">
+              <p className="text-[10px] font-black uppercase text-white/45">CS</p>
+              <b className="block text-sm">{csRank.name}</b>
+              <span className="text-[11px] text-white/55">{displayValue(csRankPoints)} pts</span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button type="button" onClick={onEdit} className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#e52b2f] text-xs font-black text-white active:scale-[.98]">
+              <Edit3 className="h-4 w-4" />
+              Modifier
+            </button>
+            <ShareProfileButton username={shareUsername} className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-xs font-black text-white active:scale-[.98]" />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-white/62">
+            {country ? <CountryFlag code={country} label={country} /> : null}
+            {memberSince ? <span>{memberSince}</span> : null}
+            <span className="break-all">{email}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-3 grid grid-cols-2 gap-3">
+        {stats.slice(0, 4).map(([label, value, detail, Icon]) => (
+          <div key={label} className="rounded-2xl border border-[#e5e7eb] bg-white p-3 shadow-[0_10px_26px_rgba(15,23,42,.045)]">
+            <div className="flex items-center justify-between gap-2">
+              <Icon className="h-5 w-5 text-[#e52b2f]" />
+              <span className="text-[10px] font-black uppercase text-[#94a3b8]">{detail}</span>
+            </div>
+            <p className="mt-3 text-[11px] font-black uppercase text-[#64748b]">{label}</p>
+            <b className="mt-1 block text-xl text-[#0f172a]">{value}</b>
+          </div>
+        ))}
+      </section>
+
+      <section className="mt-3 rounded-2xl border border-[#e5e7eb] bg-white p-4 shadow-[0_10px_26px_rgba(15,23,42,.045)]">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-black text-[#0f172a]">Aperçu rapide</h2>
+          <button type="button" onClick={onLikesRequest} disabled={likesLoading || !freeFireProfile?.uid} className="rounded-lg bg-[#fff1f2] px-3 py-2 text-[11px] font-black text-[#e52b2f] disabled:opacity-50">
+            {likesLoading ? "Envoi..." : "+100 likes"}
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3">
+          {quickStats.map(([label, value, Icon]) => (
+            <div key={label} className="grid grid-cols-[24px_1fr_auto] items-center gap-2 text-sm">
+              <Icon className="h-4 w-4 text-[#e52b2f]" />
+              <span className="font-semibold text-[#475569]">{label}</span>
+              <b className="max-w-[120px] truncate text-right text-xs text-[#0f172a]">{value}</b>
+            </div>
+          ))}
+        </div>
+        {likesStatus ? <p className="mt-3 rounded-xl bg-[#fff7ed] px-3 py-2 text-xs font-bold leading-5 text-[#9a3412]">{likesStatus}</p> : null}
+      </section>
+
+      <section className="mt-3 rounded-2xl bg-[#0b1019] p-4 text-white shadow-[0_14px_30px_rgba(15,23,42,.12)]">
+        <div className="flex items-center gap-3">
+          <GuildEmblem />
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase text-white/45">Guilde actuelle</p>
+            <h2 className="truncate text-lg font-black">{hasGuild ? guildName : "Aucune guilde détectée"}</h2>
+            <p className="mt-1 text-xs text-white/55">Niveau {displayValue(valueFrom(guildInfo, "GuildLevel"))} · {displayValue(valueFrom(guildInfo, "GuildMember"))}/{displayValue(valueFrom(guildInfo, "GuildCapacity"))} membres</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-3 rounded-2xl border border-[#e5e7eb] bg-white p-4 shadow-[0_10px_26px_rgba(15,23,42,.045)]">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-black text-[#0f172a]">Activité récente</h2>
+          <a href="/replays" className="text-xs font-black text-[#e52b2f]">Voir</a>
+        </div>
+        <div className="mt-4 space-y-3">
+          {activities.slice(0, 3).map((activity) => (
+            <p key={activity} className="grid grid-cols-[20px_1fr] gap-2 text-xs leading-5 text-[#475569]">
+              <Trophy className="mt-0.5 h-4 w-4 text-[#e52b2f]" />
+              <span>{activity}</span>
+            </p>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-base font-black text-[#0f172a]">Vidéos récentes</h2>
+          <a href="/replays" className="text-xs font-black text-[#e52b2f]">Tout voir</a>
+        </div>
+        <div className="flex snap-x gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {recentVideos.length ? recentVideos.map((video) => {
+            const href = video.url ?? video.watch_url ?? "/replays";
+            const external = href.startsWith("http");
+
+            return (
+              <a key={video.youtube_video_id ?? video.slug ?? video.title} href={href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined} className="w-[78vw] shrink-0 snap-start rounded-2xl border border-[#e5e7eb] bg-white p-2 shadow-[0_10px_26px_rgba(15,23,42,.045)]">
+                <div className="relative aspect-video overflow-hidden rounded-xl bg-[#111827]">
+                  {video.thumbnail_url ? <img src={video.thumbnail_url} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-xs font-black text-white/70">YOUTUBE</div>}
+                  <span className="absolute bottom-2 left-2 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-black text-[#111827]"><Play className="inline h-3 w-3" /> Voir</span>
+                </div>
+                <h3 className="mt-2 line-clamp-2 text-sm font-black text-[#0f172a]">{video.title}</h3>
+                <p className="mt-1 text-xs font-semibold text-[#64748b]"><Eye className="inline h-3 w-3" /> {displayValue(video.views_count)} vues</p>
+              </a>
+            );
+          }) : (
+            <div className="w-full rounded-2xl border border-dashed border-[#d7dce5] bg-white p-5 text-center text-sm font-semibold text-[#64748b]">Aucune vidéo synchronisée.</div>
+          )}
+        </div>
+      </section>
+
+      {editOpen ? (
+        <EditProfileModal
+          avatar={avatar}
+          banner={banner}
+          gameKind="free_fire"
+          onClose={onCloseEdit}
+          onUpload={onUpload}
+        />
+      ) : null}
+    </section>
+  );
+}
+
 function PubgProfileView({
   profile,
   session,
@@ -686,33 +943,33 @@ function PubgProfileView({
   return (
     <main className="min-h-screen bg-white text-[#111827]">
       <SiteHeader />
-      <section className="w-full px-3 py-5 sm:px-5">
+      <section className="w-full px-3 py-3 sm:px-5 sm:py-5">
         <section className="relative overflow-hidden rounded-lg border border-[#111827] bg-[#070b12] text-white shadow-[0_24px_60px_rgba(0,0,0,.22)]">
           {banner ? <img src={banner} alt="" className="absolute inset-0 h-full w-full object-cover opacity-18" /> : null}
           <div className="absolute inset-0 bg-[linear-gradient(110deg,#070b12_0%,rgba(7,11,18,.96)_42%,rgba(229,43,47,.34)_100%)]" />
-          <div className="relative grid min-h-[330px] gap-6 p-7 lg:grid-cols-[1fr_340px]">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center">
-              <div className="grid h-36 w-36 shrink-0 place-items-center rounded-lg border border-white/15 bg-white/8 shadow-[0_20px_46px_rgba(229,43,47,.16)]">
-                {avatar ? <img src={avatar} alt="" className="h-28 w-28 rounded-lg object-cover" /> : <AvatarFallback name={name} size="large" />}
+          <div className="relative grid min-h-[330px] gap-5 p-4 sm:p-6 lg:grid-cols-[1fr_340px] lg:p-7">
+            <div className="flex min-w-0 flex-col items-center gap-4 text-center sm:gap-6 md:flex-row md:items-center md:text-left">
+              <div className="grid h-28 w-28 shrink-0 place-items-center rounded-lg border border-white/15 bg-white/8 shadow-[0_20px_46px_rgba(229,43,47,.16)] sm:h-36 sm:w-36">
+                {avatar ? <img src={avatar} alt="" className="h-24 w-24 rounded-lg object-cover sm:h-28 sm:w-28" /> : <AvatarFallback name={name} size="large" />}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-black uppercase text-[#ff5961]">Compte PUBG synchronisé</p>
-                <h1 className="mt-2 text-4xl font-black tracking-normal">{name}</h1>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm font-bold text-white/75">
+                <h1 className="mt-2 break-words text-2xl font-black tracking-normal sm:text-3xl lg:text-4xl">{name}</h1>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-white/75 md:justify-start sm:text-sm">
                   <span className="rounded bg-[#ff2532] px-3 py-1 text-xs font-black text-white">PUBG</span>
                   <span>{profile.platform ?? "steam"}</span>
                   <span>ID: {playerId}</span>
                   <CopyToClipboardButton value={playerId} className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-white/5 text-white/80 transition hover:bg-white/10" label="Copier l’ID" />
                 </div>
-                <p className="mt-4 flex flex-wrap items-center gap-4 text-sm text-white/70">
+                <p className="mt-4 flex flex-wrap items-center justify-center gap-2 break-all text-xs text-white/70 md:justify-start sm:gap-4 sm:text-sm">
                   {country ? <CountryFlag code={country} label={country} /> : null}
                   <span>{email}</span>
                   <span>{recentMatches.length} matchs récents trouvés</span>
                 </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <button type="button" onClick={onEdit} className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#ff2532] px-5 text-sm font-black text-white"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
-                  <a href="/pubg" className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-5 text-sm font-black text-white backdrop-blur transition hover:bg-white/15"><BarChart3 className="h-4 w-4" /> PUBG HUB</a>
-                  <button type="button" onClick={onDisconnect} className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-5 text-sm font-black text-white/80"><LogOut className="h-4 w-4" /> Déconnecté</button>
+                <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap sm:gap-3 md:mt-6">
+                  <button type="button" onClick={onEdit} className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#ff2532] px-4 text-xs font-black text-white active:scale-[.98] sm:px-5 sm:text-sm"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
+                  <a href="/pubg" className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 text-xs font-black text-white backdrop-blur transition active:scale-[.98] hover:bg-white/15 sm:px-5 sm:text-sm"><BarChart3 className="h-4 w-4" /> PUBG HUB</a>
+                  <button type="button" onClick={onDisconnect} className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/5 px-4 text-xs font-black text-white/80 active:scale-[.98] sm:px-5 sm:text-sm"><LogOut className="h-4 w-4" /> Déconnecté</button>
                 </div>
               </div>
             </div>
@@ -838,31 +1095,31 @@ function CodProfileView({
   return (
     <main className="min-h-screen bg-white text-[#111827]">
       <SiteHeader />
-      <section className="w-full px-3 py-5 sm:px-5">
+      <section className="w-full px-3 py-3 sm:px-5 sm:py-5">
         <section className="relative overflow-hidden rounded-lg border border-[#111827] bg-[#080a0f] text-white shadow-[0_24px_60px_rgba(0,0,0,.22)]">
           {banner ? <img src={banner} alt="" className="absolute inset-0 h-full w-full object-cover opacity-16" /> : null}
           <div className="absolute inset-0 bg-[linear-gradient(110deg,#080a0f_0%,rgba(8,10,15,.94)_48%,rgba(37,99,235,.28)_100%)]" />
-          <div className="relative grid min-h-[320px] gap-6 p-7 lg:grid-cols-[1fr_330px]">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center">
-              <div className="grid h-36 w-36 shrink-0 place-items-center rounded-lg border border-white/15 bg-white/8 shadow-[0_20px_46px_rgba(37,99,235,.18)]">
-                {avatar ? <img src={avatar} alt="" className="h-28 w-28 rounded-lg object-cover" /> : <AvatarFallback name={name} size="large" />}
+          <div className="relative grid min-h-[320px] gap-5 p-4 sm:p-6 lg:grid-cols-[1fr_330px] lg:p-7">
+            <div className="flex min-w-0 flex-col items-center gap-4 text-center sm:gap-6 md:flex-row md:items-center md:text-left">
+              <div className="grid h-28 w-28 shrink-0 place-items-center rounded-lg border border-white/15 bg-white/8 shadow-[0_20px_46px_rgba(37,99,235,.18)] sm:h-36 sm:w-36">
+                {avatar ? <img src={avatar} alt="" className="h-24 w-24 rounded-lg object-cover sm:h-28 sm:w-28" /> : <AvatarFallback name={name} size="large" />}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-black uppercase text-[#60a5fa]">Compte Call of Duty lié</p>
-                <h1 className="mt-2 text-4xl font-black tracking-normal">{name}</h1>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm font-bold text-white/75">
+                <h1 className="mt-2 break-words text-2xl font-black tracking-normal sm:text-3xl lg:text-4xl">{name}</h1>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-white/75 md:justify-start sm:text-sm">
                   <span className="rounded bg-[#2563eb] px-3 py-1 text-xs font-black text-white">CALL OF DUTY</span>
                   <span>Pseudo COD: {codUsername}</span>
                   <CopyToClipboardButton value={codUsername} className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-white/5 text-white/80 transition hover:bg-white/10" label="Copier le pseudo" />
                 </div>
-                <p className="mt-4 flex flex-wrap items-center gap-4 text-sm text-white/70">
+                <p className="mt-4 flex flex-wrap items-center justify-center gap-2 break-all text-xs text-white/70 md:justify-start sm:gap-4 sm:text-sm">
                   {country ? <CountryFlag code={country} label={country} /> : null}
                   <span>{email}</span>
                   <span>Statut: {verificationStatus}</span>
                 </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <button type="button" onClick={onEdit} className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#2563eb] px-5 text-sm font-black text-white"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
-                  <button type="button" onClick={onDisconnect} className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-5 text-sm font-black text-white/80"><LogOut className="h-4 w-4" /> Déconnecté</button>
+                <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap sm:gap-3 md:mt-6">
+                  <button type="button" onClick={onEdit} className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#2563eb] px-4 text-xs font-black text-white active:scale-[.98] sm:px-5 sm:text-sm"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
+                  <button type="button" onClick={onDisconnect} className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/5 px-4 text-xs font-black text-white/80 active:scale-[.98] sm:px-5 sm:text-sm"><LogOut className="h-4 w-4" /> Déconnecté</button>
                 </div>
               </div>
             </div>
@@ -994,31 +1251,31 @@ function FortniteProfileView({
   return (
     <main className="min-h-screen bg-white text-[#111827]">
       <SiteHeader />
-      <section className="w-full px-3 py-5 sm:px-5">
+      <section className="w-full px-3 py-3 sm:px-5 sm:py-5">
         <section className="relative overflow-hidden rounded-lg border border-[#32106d] bg-[#14051f] text-white shadow-[0_24px_60px_rgba(76,29,149,.25)]">
           {banner ? <img src={banner} alt="" className="absolute inset-0 h-full w-full object-cover opacity-18" /> : null}
           <div className="absolute inset-0 bg-[linear-gradient(110deg,#14051f_0%,rgba(20,5,31,.95)_45%,rgba(124,58,237,.36)_100%)]" />
-          <div className="relative grid min-h-[330px] gap-6 p-7 lg:grid-cols-[1fr_340px]">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center">
-              <div className="grid h-36 w-36 shrink-0 place-items-center rounded-2xl border border-white/15 bg-white/8 shadow-[0_20px_46px_rgba(124,58,237,.18)]">
-                {avatar ? <img src={avatar} alt="" className="h-28 w-28 rounded-xl object-cover" /> : <AvatarFallback name={name} size="large" />}
+          <div className="relative grid min-h-[330px] gap-5 p-4 sm:p-6 lg:grid-cols-[1fr_340px] lg:p-7">
+            <div className="flex min-w-0 flex-col items-center gap-4 text-center sm:gap-6 md:flex-row md:items-center md:text-left">
+              <div className="grid h-28 w-28 shrink-0 place-items-center rounded-2xl border border-white/15 bg-white/8 shadow-[0_20px_46px_rgba(124,58,237,.18)] sm:h-36 sm:w-36">
+                {avatar ? <img src={avatar} alt="" className="h-24 w-24 rounded-xl object-cover sm:h-28 sm:w-28" /> : <AvatarFallback name={name} size="large" />}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-black uppercase text-[#c4b5fd]">Compte Fortnite synchronisé</p>
-                <h1 className="mt-2 text-4xl font-black tracking-normal">{name}</h1>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm font-bold text-white/75">
+                <h1 className="mt-2 break-words text-2xl font-black tracking-normal sm:text-3xl lg:text-4xl">{name}</h1>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-white/75 md:justify-start sm:text-sm">
                   <span className="rounded bg-[#7c3aed] px-3 py-1 text-xs font-black text-white">FORTNITE</span>
                   <span>ID: {accountId}</span>
                   <CopyToClipboardButton value={accountId} className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-white/5 text-white/80 transition hover:bg-white/10" label="Copier l’ID" />
                 </div>
-                <p className="mt-4 flex flex-wrap items-center gap-4 text-sm text-white/70">
+                <p className="mt-4 flex flex-wrap items-center justify-center gap-2 break-all text-xs text-white/70 md:justify-start sm:gap-4 sm:text-sm">
                   {country ? <CountryFlag code={country} label={country} /> : null}
                   <span>{email}</span>
                   <span>Type: {(profile.account_type ?? "epic").toUpperCase()}</span>
                 </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <button type="button" onClick={onEdit} className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#7c3aed] px-5 text-sm font-black text-white"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
-                  <button type="button" onClick={onDisconnect} className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-5 text-sm font-black text-white/80"><LogOut className="h-4 w-4" /> Déconnecté</button>
+                <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap sm:gap-3 md:mt-6">
+                  <button type="button" onClick={onEdit} className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#7c3aed] px-4 text-xs font-black text-white active:scale-[.98] sm:px-5 sm:text-sm"><Edit3 className="h-4 w-4" /> MODIFIER LE PROFIL</button>
+                  <button type="button" onClick={onDisconnect} className="interactive-button inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/5 px-4 text-xs font-black text-white/80 active:scale-[.98] sm:px-5 sm:text-sm"><LogOut className="h-4 w-4" /> Déconnecté</button>
                 </div>
               </div>
             </div>
@@ -1116,8 +1373,8 @@ function EditProfileModal({
   const updateCopy = profileUpdateCopy(gameKind);
 
   return (
-    <div className="fixed inset-0 z-[120] grid place-items-center bg-black/70 px-4 py-8 backdrop-blur-sm">
-      <div className="w-full max-w-3xl overflow-hidden rounded-xl border border-[#1f2937] bg-white text-[#111827] shadow-[0_28px_80px_rgba(0,0,0,.45)]">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/70 pt-10 backdrop-blur-sm sm:grid sm:place-items-center sm:px-4 sm:py-8">
+      <div className="max-h-[calc(100dvh-2.5rem)] w-full max-w-3xl overflow-y-auto overscroll-contain rounded-t-2xl border border-[#1f2937] bg-white text-[#111827] shadow-[0_28px_80px_rgba(0,0,0,.45)] sm:rounded-xl">
         <div className="flex items-center justify-between border-b border-[#ececf3] px-5 py-4">
           <div>
             <p className="text-[11px] font-black uppercase text-[#e52b2f]">Profil Astral4Gamer</p>

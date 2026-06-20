@@ -100,22 +100,15 @@ export function BestTeamsLeaderboard() {
       if (!team?.name) continue;
       aggregated.set(team.name, (aggregated.get(team.name) ?? 0) + Number(team.points ?? 0));
     }
-    const sorted = [...aggregated.entries()]
+    return [...aggregated.entries()]
       .map(([name, points]) => ({ name, points }))
       .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
       .slice(0, 5);
-    return sorted.length ? sorted : [
-      { name: "Aucune équipe", points: 0 },
-      { name: "Crée une équipe", points: 0 },
-      { name: "pour apparaître", points: 0 },
-      { name: "dans ce classement", points: 0 },
-      { name: "—", points: 0 }
-    ];
   }, [teams]);
 
   return (
     <div className="space-y-2">
-      {rows.map((row, index) => {
+      {rows.length ? rows.map((row, index) => {
         const rank = index + 1;
         const trend = "same";
         return (
@@ -127,7 +120,9 @@ export function BestTeamsLeaderboard() {
             <span className="text-[#9ca3af]">-</span>
           </div>
         );
-      })}
+      }) : (
+        <p className="rounded-md bg-[#fbfbff] p-3 text-xs font-semibold text-[#6b7280]">Aucune équipe classée pour le moment.</p>
+      )}
       <div className="mt-2 rounded-md bg-[#fbfbff] p-2 text-[11px] font-semibold text-[#6b7280]">
         <span className="inline-flex items-center gap-2">
           <CheckCircle2 className="h-3.5 w-3.5 text-[#7c19f4]" />

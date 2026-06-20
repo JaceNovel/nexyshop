@@ -338,9 +338,10 @@ class TournamentController extends Controller
         try {
             $user = $request->user();
             $nameParts = preg_split('/\s+/', trim((string) $user->name), 2) ?: [];
+            $currency = strtoupper((string) config('services.payments.moneroo.default_currency', 'USD'));
             $checkout = (new PaymentManager('moneroo'))->initiate([
                 'amount' => 2,
-                'currency' => 'USD',
+                'currency' => $currency,
                 'description' => 'Financement tournoi Astral4Gamer #'.$tournament->id,
                 'return_url' => config('services.payments.moneroo.return_url').'?tournament_id='.$tournament->id,
                 'customer' => [
@@ -361,7 +362,7 @@ class TournamentController extends Controller
                 'provider' => 'moneroo',
                 'reference' => $checkout['reference'] ?: 'tournament-'.$tournament->id.'-'.Str::uuid(),
                 'amount' => 2,
-                'currency' => 'USD',
+                'currency' => $currency,
                 'status' => 'initiated',
                 'payload' => [
                     ...$checkout,

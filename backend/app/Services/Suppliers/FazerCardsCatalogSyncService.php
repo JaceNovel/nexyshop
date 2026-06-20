@@ -302,31 +302,67 @@ class FazerCardsCatalogSyncService
         $costs = array_values(array_filter($costs, fn ($cost) => (float) $cost > 0));
         $min = $costs ? min($costs) : 0;
         $max = $costs ? max($costs) : $min;
+        $sku = 'fazercards-'.$kind.'-'.$externalId;
+        $dedupeKey = $this->dedupeKey((string) $data['type'], (string) $data['name']);
+        $existing = Product::query()
+            ->where('sku', $sku)
+            ->orWhere('metadata->dedupe_key', $dedupeKey)
+            ->orWhere(function ($query) use ($data) {
+                $query->where('name', (string) $data['name'])
+                    ->where('metadata->type', (string) $data['type']);
+            })
+            ->first();
 
-        return Product::updateOrCreate(
-            ['sku' => 'fazercards-'.$kind.'-'.$externalId],
-            [
-                'name' => $data['name'],
-                'game' => $data['category'],
-                'price' => $min,
-                'currency' => 'USD',
-                'active' => $min > 0,
-                'metadata' => [
-                    'supplier' => 'fazercards',
-                    'external_id' => $externalId,
-                    'category' => $data['category'],
-                    'category_slug' => Str::slug($data['category']),
-                    'type' => $data['type'],
-                    'image_url' => $this->absoluteImage($data['image_url'] ?? null),
-                    'description' => $data['description'] ?: null,
-                    'requires_uid' => (bool) $data['requires_uid'],
-                    'required_fields' => $data['fields'] ?? [],
-                    'price_range' => $this->pricing->retailRange($min, $max),
-                    'cost_range' => ['min' => $min, 'max' => $max],
-                    'raw' => $data['raw'] ?? null,
-                ],
-            ]
-        );
+        $existingMetadata = is_array($existing?->metadata) ? $existing->metadata : [];
+        $suppliers = collect(array_merge(
+            Arr::wrap($existingMetadata['suppliers'] ?? []),
+            Arr::wrap($existingMetadata['supplier'] ?? null),
+            ['fazercards']
+        ))
+            ->filter(fn ($supplier) => is_string($supplier) && trim($supplier) !== '')
+            ->map(fn ($supplier) => trim((string) $supplier))
+            ->unique()
+            ->values()
+            ->all();
+
+        $existingPrice = $existing ? (float) $existing->price : 0;
+        $resolvedMin = $min > 0 && $existingPrice > 0 ? min($min, $existingPrice) : max($min, $existingPrice);
+        $resolvedMax = max($max, $resolvedMin, (float) Arr::get($existingMetadata, 'cost_range.max', 0));
+        $resolvedCategory = $this->resolveCategoryLabel((string) $data['name'], (string) $data['category'], (string) $data['type']);
+        $resolvedImage = $this->preferredImage($data['image_url'] ?? null, $existing, (string) $data['name'], $resolvedCategory, (string) $data['type']);
+
+        $metadata = array_merge($existingMetadata, [
+            'external_id' => $externalId,
+            'dedupe_key' => $dedupeKey,
+            'category' => $resolvedCategory,
+            'category_slug' => Str::slug($resolvedCategory),
+            'type' => $data['type'],
+            'image_url' => $resolvedImage,
+            'description' => $data['description'] ?: ($existingMetadata['description'] ?? null),
+            'requires_uid' => (bool) $data['requires_uid'],
+            'required_fields' => $data['fields'] ?? [],
+            'price_range' => $this->pricing->retailRange($resolvedMin, $resolvedMax),
+            'cost_range' => ['min' => $resolvedMin, 'max' => $resolvedMax],
+            'raw' => $data['raw'] ?? null,
+            'suppliers' => $suppliers,
+        ]);
+
+        if (! $existing) {
+            $metadata['supplier'] = 'fazercards';
+        }
+
+        $product = $existing ?? new Product(['sku' => $sku]);
+        $product->fill([
+            'name' => $data['name'],
+            'game' => $resolvedCategory,
+            'price' => $resolvedMin,
+            'currency' => 'USD',
+            'active' => $resolvedMin > 0,
+            'metadata' => $metadata,
+        ]);
+        $product->save();
+
+        return $product;
     }
 
     private function upsertVariation(Supplier $supplier, Product $product, string $sku, array $data): SupplierProduct
@@ -386,6 +422,123 @@ class FazerCardsCatalogSyncService
         }
 
         return preg_match('/^https?:\/\//i', $url) ? $url : null;
+    }
+
+    private function preferredImage(?string $incomingUrl, ?Product $existing, string $name, string $category, string $type): ?string
+    {
+        $incoming = $this->absoluteImage($incomingUrl);
+
+        if ($this->isUsableImage($incoming)) {
+            return $incoming;
+        }
+
+        $existingImage = $this->absoluteImage(Arr::get($existing?->metadata ?? [], 'image_url'));
+
+        if ($this->isUsableImage($existingImage)) {
+            return $existingImage;
+        }
+
+        return $this->fallbackBrandImage($name, $category, $type);
+    }
+
+    private function isUsableImage(?string $url): bool
+    {
+        if (! $url) {
+            return false;
+        }
+
+        $normalized = strtolower($url);
+
+        return ! str_contains($normalized, 'placeholder')
+            && ! str_contains($normalized, 'not-found')
+            && ! str_contains($normalized, 'not%20found')
+            && ! str_ends_with($normalized, '/icon.svg');
+    }
+
+    private function dedupeKey(string $type, string $name): string
+    {
+        $normalizedName = Str::of($name)
+            ->ascii()
+            ->lower()
+            ->replaceMatches('/&/', ' and ')
+            ->replaceMatches('/[^a-z0-9]+/', ' ')
+            ->trim()
+            ->replace(' ', '-')
+            ->toString();
+
+        return trim($type.'-'.$normalizedName, '-');
+    }
+
+    private function resolveCategoryLabel(string $name, string $fallbackCategory, string $type): string
+    {
+        $text = strtolower($name.' '.$fallbackCategory.' '.$type);
+
+        foreach ([
+            'telegram' => 'Telegram',
+            'steam' => 'Steam',
+            'playstation' => 'PlayStation',
+            'psn' => 'PlayStation',
+            'xbox' => 'Xbox',
+            'nintendo' => 'Nintendo',
+            'apple' => 'Apple',
+            'itunes' => 'Apple',
+            'amazon' => 'Amazon',
+            'google play' => 'Google Play',
+            'discord' => 'Discord',
+            'netflix' => 'Netflix',
+            'spotify' => 'Spotify',
+            'riot' => 'Riot Games',
+            'valorant' => 'Valorant',
+            'pubg' => 'PUBG',
+            'free fire' => 'Free Fire',
+            'garena' => 'Free Fire',
+            'roblox' => 'Roblox',
+            'battlenet' => 'Battle.net',
+            'battle.net' => 'Battle.net',
+            'blizzard' => 'Battle.net',
+        ] as $needle => $label) {
+            if (str_contains($text, $needle)) {
+                return $label;
+            }
+        }
+
+        return $fallbackCategory;
+    }
+
+    private function fallbackBrandImage(string $name, string $category, string $type): ?string
+    {
+        $text = strtolower($name.' '.$category.' '.$type);
+
+        $icons = [
+            'telegram' => 'https://cdn.simpleicons.org/telegram/26A5E4',
+            'steam' => 'https://cdn.simpleicons.org/steam/171A21',
+            'playstation' => 'https://cdn.simpleicons.org/playstation/003791',
+            'psn' => 'https://cdn.simpleicons.org/playstation/003791',
+            'xbox' => 'https://cdn.simpleicons.org/xbox/107C10',
+            'nintendo' => 'https://cdn.simpleicons.org/nintendo/E60012',
+            'apple' => 'https://cdn.simpleicons.org/apple/111111',
+            'itunes' => 'https://cdn.simpleicons.org/apple/111111',
+            'amazon' => 'https://cdn.simpleicons.org/amazon/FF9900',
+            'google play' => 'https://cdn.simpleicons.org/googleplay/34A853',
+            'discord' => 'https://cdn.simpleicons.org/discord/5865F2',
+            'netflix' => 'https://cdn.simpleicons.org/netflix/E50914',
+            'spotify' => 'https://cdn.simpleicons.org/spotify/1DB954',
+            'riot' => 'https://cdn.simpleicons.org/riotgames/D32936',
+            'valorant' => 'https://cdn.simpleicons.org/valorant/FA4454',
+            'battlenet' => 'https://cdn.simpleicons.org/blizzard/148EFF',
+            'battle.net' => 'https://cdn.simpleicons.org/blizzard/148EFF',
+            'blizzard' => 'https://cdn.simpleicons.org/blizzard/148EFF',
+            'roblox' => 'https://cdn.simpleicons.org/roblox/000000',
+            'pubg' => 'https://cdn.simpleicons.org/pubg/F2A900',
+        ];
+
+        foreach ($icons as $needle => $url) {
+            if (str_contains($text, $needle)) {
+                return $url;
+            }
+        }
+
+        return null;
     }
 
     private function text(mixed $value): string

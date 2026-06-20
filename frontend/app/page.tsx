@@ -5,6 +5,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { type SyntheticEvent, useEffect, useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 import { SiteHeader } from "@/components/site-header";
 import { type CatalogProduct, getCatalogProducts } from "@/lib/api";
 
@@ -209,6 +210,18 @@ function bestProductImage(product: Pick<CatalogProduct, "name" | "game" | "categ
   return fallbackImageForProduct(product);
 }
 
+function hasRealCatalogImage(product: Pick<CatalogProduct, "image_url">) {
+  const imageUrl = product.image_url?.trim().toLowerCase();
+
+  return Boolean(
+    imageUrl &&
+    !imageUrl.endsWith("/icon.svg") &&
+    !imageUrl.includes("placeholder") &&
+    !imageUrl.includes("not-found") &&
+    !imageUrl.includes("not%20found")
+  );
+}
+
 function preventBrokenImage(event: SyntheticEvent<HTMLImageElement>, fallback = gameImages.astral) {
   const image = event.currentTarget;
 
@@ -220,21 +233,28 @@ function preventBrokenImage(event: SyntheticEvent<HTMLImageElement>, fallback = 
   image.src = fallback;
 }
 
-function bestProductPrice(product: CatalogProduct) {
+function bestProductPrice(
+  product: CatalogProduct,
+  language: "fr" | "en",
+  formatMoney: (value: number, sourceCurrency?: string, options?: { unavailableLabel?: string; prefix?: string }) => string
+) {
   const variationPrices = (product.variations ?? [])
     .map((variation) => Number(variation.price))
     .filter((price) => price > 0);
   const price = Number(product.price) > 0 ? Number(product.price) : Math.min(...variationPrices);
 
   if (!Number.isFinite(price) || price <= 0) {
-    return "Prix bientôt";
+    return language === "fr" ? "Prix bientôt" : "Price soon";
   }
 
   const prefix = variationPrices.length > 1 || (product.price_range?.min && product.price_range?.max && product.price_range.min !== product.price_range.max)
-    ? "Dès "
+    ? (language === "fr" ? "Dès " : "From ")
     : "";
 
-  return `${prefix}${new Intl.NumberFormat("fr-FR").format(price)} ${product.currency}`;
+  return formatMoney(price, product.currency, {
+    prefix,
+    unavailableLabel: language === "fr" ? "Prix bientôt" : "Price soon"
+  });
 }
 
 function productMatchesTerms(product: CatalogProduct, terms: string[]) {
@@ -251,22 +271,35 @@ function findBestHeroProduct(products: CatalogProduct[], terms: string[]) {
     ?? matches[0];
 }
 
-const homeProductCount = 20;
+const homeProductCount = 16;
+const homeProductFetchCount = 240;
 const homeProductRotationMs = 2 * 60 * 1000;
 const homeProductPageKey = "astral_home_product_page";
+const homeProductOffsetKey = "astral_home_product_offset";
 
-function randomCatalogPage(lastPage: number, totalProducts: number, previousPage: number) {
-  const lastPageIsFull = totalProducts > 0 && totalProducts % homeProductCount === 0;
-  const lastFullPage = lastPage > 1 && !lastPageIsFull ? lastPage - 1 : lastPage;
-  if (lastFullPage <= 1) return 1;
+function preferredHomeProducts(
+  products: CatalogProduct[],
+  formatMoney: (value: number, sourceCurrency?: string, options?: { unavailableLabel?: string; prefix?: string }) => string
+) {
+  const seenNames = new Set<string>();
+  const visibleProducts = products.filter((product) => {
+    const name = product.name.trim().toLowerCase();
+    const hasPrice = bestProductPrice(product, "fr", formatMoney) !== "Prix bientôt";
 
-  let page = Math.floor(Math.random() * lastFullPage) + 1;
-  if (page === previousPage) page = (page % lastFullPage) + 1;
+    if (!name || seenNames.has(name) || !hasPrice) {
+      return false;
+    }
 
-  return page;
+    seenNames.add(name);
+    return true;
+  });
+
+  return visibleProducts;
 }
 
 export default function Home() {
+  const { language, formatMoney } = useLanguage();
+  const isFrench = language === "fr";
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [bannerLinks, setBannerLinks] = useState<Record<string, string>>({});
   const [shortcutProducts, setShortcutProducts] = useState<Record<string, CatalogProduct>>({});
@@ -278,20 +311,49 @@ export default function Home() {
 
     async function loadRotatingProducts() {
       try {
-        const firstPage = await getCatalogProducts(homeProductCount, { page: 1 });
-        const lastPage = Math.max(1, Number(firstPage.meta?.last_page ?? 1));
-        const totalProducts = Math.max(firstPage.data.length, Number(firstPage.meta?.total ?? firstPage.data.length));
-        const previousPage = Number(window.sessionStorage.getItem(homeProductPageKey) ?? 0);
-        const selectedPage = randomCatalogPage(lastPage, totalProducts, previousPage);
-        const response = selectedPage === 1
-          ? firstPage
-          : await getCatalogProducts(homeProductCount, { page: selectedPage });
+        const storedPage = Number(window.sessionStorage.getItem(homeProductPageKey) ?? 1);
+        const storedOffset = Number(window.sessionStorage.getItem(homeProductOffsetKey) ?? 0);
+        let selectedPage = Number.isFinite(storedPage) && storedPage > 0 ? storedPage : 1;
+        let offset = Number.isFinite(storedOffset) && storedOffset >= 0 ? storedOffset : 0;
+        let response = await getCatalogProducts(homeProductFetchCount, { page: selectedPage, refresh: Date.now() });
+        let lastPage = Math.max(1, Number(response.meta?.last_page ?? 1));
+
+        if (!response.data.length && selectedPage > 1) {
+          selectedPage = 1;
+          offset = 0;
+          response = await getCatalogProducts(homeProductFetchCount, { page: selectedPage, refresh: Date.now() + 1 });
+          lastPage = Math.max(1, Number(response.meta?.last_page ?? 1));
+        }
+
+        const currentProducts = preferredHomeProducts(response.data, formatMoney);
+        let selection = currentProducts.slice(offset, offset + homeProductCount);
+        let nextPage = selectedPage;
+        let nextOffset = offset + homeProductCount;
+        let nextPageProductCount = currentProducts.length;
+
+        if (selection.length < homeProductCount && lastPage > 1) {
+          const neededProducts = homeProductCount - selection.length;
+          const followingPage = selectedPage >= lastPage ? 1 : selectedPage + 1;
+          const followingResponse = await getCatalogProducts(homeProductFetchCount, { page: followingPage, refresh: Date.now() + 2 });
+          const followingProducts = preferredHomeProducts(followingResponse.data, formatMoney);
+
+          selection = [...selection, ...followingProducts.slice(0, neededProducts)];
+          nextPage = followingPage;
+          nextOffset = neededProducts;
+          nextPageProductCount = followingProducts.length;
+        }
+
+        if (nextOffset >= nextPageProductCount) {
+          nextPage = nextPage >= lastPage ? 1 : nextPage + 1;
+          nextOffset = 0;
+        }
 
         if (cancelled) return;
 
-        window.sessionStorage.setItem(homeProductPageKey, String(selectedPage));
-        setProducts(response.data);
-        setCatalogStatus(response.data.length ? "ready" : "empty");
+        window.sessionStorage.setItem(homeProductPageKey, String(nextPage));
+        window.sessionStorage.setItem(homeProductOffsetKey, String(Math.max(0, nextOffset)));
+        setProducts(selection);
+        setCatalogStatus(selection.length ? "ready" : "empty");
       } catch {
         if (!cancelled) setCatalogStatus("error");
       }
@@ -304,7 +366,7 @@ export default function Home() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [formatMoney]);
 
   useEffect(() => {
     let cancelled = false;
@@ -385,11 +447,11 @@ export default function Home() {
               <div className={`absolute inset-0 bg-gradient-to-r ${slide.gradient}`} />
               <div className="absolute inset-0 bg-gradient-to-r from-black/20 via-black/0 to-transparent" />
               <div className="relative z-10 flex h-full max-w-[760px] flex-col justify-center px-5 sm:px-8 md:pl-[96px] lg:pl-[156px]">
-                <p className="mb-2 hidden text-xs font-black uppercase tracking-[.14em] text-white/80 sm:block md:mb-3 md:text-sm md:tracking-[.18em]">Recharge officielle Astral4Gamer</p>
-                <h1 className="max-w-[260px] text-[26px] font-black leading-[1.05] tracking-normal sm:max-w-[430px] sm:text-[34px] md:text-[44px]">{slide.title}</h1>
-                <p className="mt-2 line-clamp-2 max-w-[290px] text-[13px] font-medium leading-5 text-white/88 sm:max-w-[420px] sm:text-base md:mt-4 md:max-w-[470px] md:text-[21px] md:leading-7">{slide.text}</p>
+                <p className="mb-2 hidden text-xs font-black uppercase tracking-[.14em] text-white/80 sm:block md:mb-3 md:text-sm md:tracking-[.18em]">{isFrench ? "Recharge officielle Astral4Gamer" : "Official Astral4Gamer top-up"}</p>
+                <h1 className="max-w-[260px] text-[26px] font-black leading-[1.05] tracking-normal sm:max-w-[430px] sm:text-[34px] md:text-[44px]">{homeSlideCopy(slide.key, language).title}</h1>
+                <p className="mt-2 line-clamp-2 max-w-[290px] text-[13px] font-medium leading-5 text-white/88 sm:max-w-[420px] sm:text-base md:mt-4 md:max-w-[470px] md:text-[21px] md:leading-7">{homeSlideCopy(slide.key, language).text}</p>
                 <a href={bannerLinks[slide.key] ?? slide.fallbackHref} className="interactive-button mt-4 inline-flex h-10 w-[156px] items-center justify-center gap-1 rounded bg-white text-[12px] font-black text-[#111827] shadow-sm md:mt-7 md:h-11 md:w-[188px] md:gap-2 md:text-[14px]">
-                  {slide.cta} <ChevronRight className="h-4 w-4" />
+                  {homeSlideCopy(slide.key, language).cta} <ChevronRight className="h-4 w-4" />
                 </a>
               </div>
             </div>
@@ -448,13 +510,13 @@ export default function Home() {
 
       <section id="products" className="mx-auto max-w-[1586px] px-3 py-5 sm:px-6 md:py-9">
         <div className="mb-4 flex items-center justify-between md:mb-7">
-          <h2 className="text-[17px] font-black md:text-[21px]">Produits les Plus Vendus</h2>
-          <a className="flex items-center gap-1 text-[13px] text-[#0057d9] md:text-[16px]" href="/category/top-up">Voir plus <ChevronRight className="h-4 w-4 md:h-5 md:w-5" /></a>
+          <h2 className="text-[17px] font-black md:text-[21px]">{isFrench ? "Produits les plus vendus" : "Best-selling products"}</h2>
+          <a className="flex items-center gap-1 text-[13px] text-[#0057d9] md:text-[16px]" href="/category/top-up">{isFrench ? "Voir plus" : "See more"} <ChevronRight className="h-4 w-4 md:h-5 md:w-5" /></a>
         </div>
 
-        {catalogStatus === "loading" && <p className="rounded-lg bg-[#f6f6f7] p-3 text-xs text-[#4b5563] md:p-5 md:text-sm">Chargement du catalogue...</p>}
-        {catalogStatus === "empty" && <p className="rounded-lg bg-[#fff7ed] p-3 text-xs text-[#9a3412] md:p-5 md:text-sm">Catalogue en attente de synchronisation sur le serveur.</p>}
-        {catalogStatus === "error" && <p className="rounded-lg bg-[#fef2f2] p-3 text-xs text-[#991b1b] md:p-5 md:text-sm">Impossible de charger le catalogue Astral4Gamer pour le moment.</p>}
+        {catalogStatus === "loading" && <p className="rounded-lg bg-[#f6f6f7] p-3 text-xs text-[#4b5563] md:p-5 md:text-sm">{isFrench ? "Chargement du catalogue..." : "Loading catalog..."}</p>}
+        {catalogStatus === "empty" && <p className="rounded-lg bg-[#fff7ed] p-3 text-xs text-[#9a3412] md:p-5 md:text-sm">{isFrench ? "Catalogue en attente de synchronisation sur le serveur." : "Catalog is waiting for server synchronization."}</p>}
+        {catalogStatus === "error" && <p className="rounded-lg bg-[#fef2f2] p-3 text-xs text-[#991b1b] md:p-5 md:text-sm">{isFrench ? "Impossible de charger le catalogue Astral4Gamer pour le moment." : "Unable to load the Astral4Gamer catalog right now."}</p>}
 
         {catalogStatus === "ready" ? (
           <div className="grid grid-cols-3 gap-2 sm:gap-3 md:grid-cols-4 md:gap-x-6 md:gap-y-10 xl:grid-cols-8">
@@ -465,7 +527,7 @@ export default function Home() {
                 </div>
                 <div className="px-0.5 py-1.5 md:px-1 md:py-3">
                   <h3 className="line-clamp-2 min-h-[30px] text-[10.5px] font-semibold leading-[15px] text-[#004bd6] md:min-h-[42px] md:text-[14px] md:leading-5">{product.name}</h3>
-                  <p className="mt-1 truncate text-right text-[10px] font-medium text-black md:mt-5 md:text-[14px]">{bestProductPrice(product)}</p>
+                  <p className="mt-1 truncate text-right text-[10px] font-medium text-black md:mt-5 md:text-[14px]">{bestProductPrice(product, language, formatMoney)}</p>
                 </div>
               </a>
             ))}
@@ -474,4 +536,27 @@ export default function Home() {
       </section>
     </main>
   );
+}
+
+function homeSlideCopy(key: string, language: "fr" | "en") {
+  const copy = {
+    "free-fire": {
+      fr: { title: "Free Fire Diamonds", text: "Recharge tes diamants en quelques secondes et prépare ton prochain rush.", cta: "Acheter maintenant" },
+      en: { title: "Free Fire Diamonds", text: "Top up your diamonds in seconds and get ready for your next rush.", cta: "Buy now" }
+    },
+    "call-of-duty": {
+      fr: { title: "CODM CP Instant", text: "Achète tes CP Call of Duty Mobile et débloque skins, passes et armes premium.", cta: "Acheter maintenant" },
+      en: { title: "CODM Instant CP", text: "Buy your Call of Duty Mobile CP and unlock skins, passes, and premium weapons.", cta: "Buy now" }
+    },
+    netflix: {
+      fr: { title: "Netflix Gift Card", text: "Recharge ton divertissement avec des cartes cadeaux Netflix prêtes à utiliser.", cta: "Acheter maintenant" },
+      en: { title: "Netflix Gift Card", text: "Top up your entertainment with Netflix gift cards ready to use.", cta: "Buy now" }
+    },
+    pubg: {
+      fr: { title: "PUBG Mobile UC", text: "Obtiens tes UC PUBG Mobile rapidement pour skins, caisses et royale pass.", cta: "Acheter maintenant" },
+      en: { title: "PUBG Mobile UC", text: "Get your PUBG Mobile UC quickly for skins, crates, and the royale pass.", cta: "Buy now" }
+    }
+  } as const;
+
+  return copy[key as keyof typeof copy]?.[language] ?? { title: "Astral4Gamer", text: "", cta: language === "fr" ? "Acheter maintenant" : "Buy now" };
 }

@@ -57,7 +57,7 @@ const modules = [
       button("Paiement", "astral:support:payment", ButtonStyle.Primary),
       button("Tournoi", "astral:support:tournament", ButtonStyle.Secondary),
       button("Compte", "astral:support:account", ButtonStyle.Secondary),
-      button("Partenariat", "astral:support:partner", ButtonStyle.Secondary)
+      button("Partenariat", "astral:partner:request", ButtonStyle.Secondary)
     ]
   },
   {
@@ -82,7 +82,7 @@ const modules = [
     prompt: "Presente ton projet: nom, audience, pays, lien reseau social et ce que tu veux faire avec Astral4Gamer.",
     buttons: [
       linkButton("Page partenariat", `${siteBaseUrl}/partenariat`),
-      button("Demande partenaire", "astral:support:partner", ButtonStyle.Primary)
+      button("Demande partenaire", "astral:partner:request", ButtonStyle.Primary)
     ]
   }
 ].filter((module) => module.channelId);

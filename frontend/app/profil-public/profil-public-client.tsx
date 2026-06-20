@@ -759,7 +759,7 @@ export function ProfilPublicClient() {
                   <button
                     type="button"
                     onClick={() => setRegionOpen((open) => !open)}
-                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-[#e52b2f] bg-white px-4 text-[13px] font-black uppercase text-[#111827] shadow-[0_8px_20px_rgba(16,24,40,.045)] transition hover:bg-[#fff1f2] sm:h-12 sm:min-w-[88px] sm:text-sm"
+                    className="interactive-button inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-[#e52b2f] bg-white px-4 text-[13px] font-black uppercase text-[#111827] shadow-[0_8px_20px_rgba(16,24,40,.045)] transition active:scale-[.98] hover:bg-[#fff1f2] sm:h-12 sm:min-w-[88px] sm:text-sm"
                     aria-haspopup="listbox"
                     aria-expanded={regionOpen}
                   >
@@ -796,7 +796,7 @@ export function ProfilPublicClient() {
                   type="button"
                   onClick={handleSearch}
                   disabled={loading || game === "codm"}
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#e52b2f] px-5 text-[13px] font-black text-white shadow-[0_14px_30px_rgba(229,43,47,.22)] transition hover:bg-[#c91f27] disabled:cursor-not-allowed disabled:bg-[#fca5a5] disabled:shadow-none sm:h-12 sm:w-auto sm:px-6 sm:text-sm"
+                  className="interactive-button inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#e52b2f] px-5 text-[13px] font-black text-white shadow-[0_14px_30px_rgba(229,43,47,.22)] transition active:scale-[.98] hover:bg-[#c91f27] disabled:cursor-not-allowed disabled:bg-[#fca5a5] disabled:shadow-none sm:h-12 sm:w-auto sm:px-6 sm:text-sm"
                 >
                   {loading ? "Recherche..." : "Rechercher"} <span aria-hidden>→</span>
                 </button>

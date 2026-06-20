@@ -6,6 +6,7 @@ use App\Models\Stream;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Replay;
+use App\Models\ResellerPartner;
 use App\Models\Tournament;
 use App\Models\TournamentTeam;
 use App\Models\User;
@@ -341,6 +342,64 @@ class DiscordNotificationService
         ]);
     }
 
+    public function manualFulfillmentPaid(Order $order): void
+    {
+        $product = Product::find($order->product_id);
+        $customer = $order->metadata['customer'] ?? [];
+        $fields = collect($order->metadata['supplier_fields'] ?? [])
+            ->map(fn ($value, $key) => ['name' => ucfirst(str_replace('_', ' ', (string) $key)), 'value' => (string) $value, 'inline' => false])
+            ->values()
+            ->all();
+
+        $this->send('support', [
+            'username' => config('services.discord.username', 'Astral4Gamer'),
+            'avatar_url' => config('services.discord.avatar_url'),
+            'allowed_mentions' => ['parse' => []],
+            'embeds' => [[
+                'title' => 'Nouvelle recharge manuelle CODM à traiter',
+                'description' => "La commande #{$order->id} a été payée et doit être traitée manuellement.",
+                'color' => 0xF59E0B,
+                'fields' => array_merge([
+                    ['name' => 'Produit', 'value' => $product?->name ?? 'Produit inconnu', 'inline' => true],
+                    ['name' => 'Montant', 'value' => $this->money($order->amount, $order->currency), 'inline' => true],
+                    ['name' => 'Client', 'value' => trim((string) ($customer['first_name'] ?? '').' '.($customer['last_name'] ?? '')) ?: 'Client Astral4Gamer', 'inline' => true],
+                    ['name' => 'Email paiement', 'value' => (string) ($customer['email'] ?? 'Non renseigne'), 'inline' => true],
+                    ['name' => 'Telephone', 'value' => (string) ($customer['phone'] ?? 'Non renseigne'), 'inline' => true],
+                    ['name' => 'Reference commande', 'value' => '#'.$order->id, 'inline' => true],
+                ], $fields),
+                'footer' => ['text' => 'ASTRAL4GAMER - Fulfillment manuel'],
+                'timestamp' => now()->toIso8601String(),
+            ]],
+        ]);
+    }
+
+    public function manualFulfillmentUpdated(Order $order, string $status): void
+    {
+        $product = Product::find($order->product_id);
+        $productName = $product?->name ?? 'Call of Duty Mobile';
+        $isDelivered = $status === 'delivered';
+
+        $this->send('community', [
+            'username' => config('services.discord.username', 'Astral4Gamer'),
+            'avatar_url' => config('services.discord.avatar_url'),
+            'allowed_mentions' => ['parse' => []],
+            'embeds' => [[
+                'title' => $isDelivered ? 'Recharge Call of Duty Mobile livrée' : 'Recharge Call of Duty Mobile en échec',
+                'description' => $isDelivered
+                    ? "La recharge de **{$productName}** a été un grand succès."
+                    : "La recharge de **{$productName}** a été un echec.",
+                'color' => $isDelivered ? 0x22C55E : 0xEF4444,
+                'fields' => [
+                    ['name' => 'Commande', 'value' => '#'.$order->id, 'inline' => true],
+                    ['name' => 'Statut', 'value' => $isDelivered ? 'Livrée' : 'Echec', 'inline' => true],
+                    ['name' => 'Jeu', 'value' => 'Call of Duty Mobile', 'inline' => true],
+                ],
+                'footer' => ['text' => 'ASTRAL4GAMER - Communaute CODM'],
+                'timestamp' => now()->toIso8601String(),
+            ]],
+        ]);
+    }
+
     public function communityProfileShare(User $user, array $data): void
     {
         $username = $user->username ?: str($user->name)->slug()->toString();
@@ -475,6 +534,72 @@ class DiscordNotificationService
                     ['name' => 'Statut', 'value' => 'En attente d’analyse du dossier', 'inline' => false],
                 ])),
                 'footer' => ['text' => 'ASTRAL4GAMER - Dossier partenariat privé'],
+                'timestamp' => now()->toIso8601String(),
+            ]],
+        ]);
+    }
+
+    public function resellerApproved(ResellerPartner $partner, string $email): void
+    {
+        $this->send('partners', [
+            'username' => config('services.discord.username', 'Astral4Gamer'),
+            'avatar_url' => config('services.discord.avatar_url'),
+            'allowed_mentions' => ['parse' => []],
+            'embeds' => [[
+                'title' => 'Partenaire reseller activé',
+                'description' => "**{$partner->company_name}** peut maintenant utiliser l’API Astral4Gamer Reseller.",
+                'color' => 0x22C55E,
+                'fields' => [
+                    ['name' => 'Email panel', 'value' => $email, 'inline' => true],
+                    ['name' => 'Scope', 'value' => $partner->allowed_scope, 'inline' => true],
+                    ['name' => 'Marge Astral', 'value' => $partner->margin_percent.'%', 'inline' => true],
+                    ['name' => 'Panel', 'value' => (string) config('services.reseller.panel_url'), 'inline' => false],
+                ],
+                'footer' => ['text' => 'ASTRAL4GAMER - Reseller API'],
+                'timestamp' => now()->toIso8601String(),
+            ]],
+        ]);
+    }
+
+    public function resellerWalletEvent(ResellerPartner $partner, string $type, float $amount, float $balance, string $reference): void
+    {
+        $label = $type === 'credit' ? 'Recharge reseller confirmée' : 'Mouvement wallet reseller';
+
+        $this->send('partners', [
+            'username' => config('services.discord.username', 'Astral4Gamer'),
+            'avatar_url' => config('services.discord.avatar_url'),
+            'allowed_mentions' => ['parse' => []],
+            'embeds' => [[
+                'title' => $label,
+                'description' => "**{$partner->company_name}** a un mouvement de solde reseller.",
+                'color' => $type === 'credit' ? 0x22C55E : 0x8B5CF6,
+                'fields' => [
+                    ['name' => 'Montant', 'value' => $this->money($amount, 'USD'), 'inline' => true],
+                    ['name' => 'Solde actuel', 'value' => $this->money($balance, 'USD'), 'inline' => true],
+                    ['name' => 'Référence', 'value' => $reference, 'inline' => false],
+                ],
+                'footer' => ['text' => 'ASTRAL4GAMER - Wallet reseller'],
+                'timestamp' => now()->toIso8601String(),
+            ]],
+        ]);
+    }
+
+    public function resellerLowBalance(ResellerPartner $partner, float $balance): void
+    {
+        $this->send('partners', [
+            'username' => config('services.discord.username', 'Astral4Gamer'),
+            'avatar_url' => config('services.discord.avatar_url'),
+            'allowed_mentions' => ['parse' => []],
+            'embeds' => [[
+                'title' => 'Alerte solde reseller faible',
+                'description' => "**{$partner->company_name}** est sous le seuil minimum.",
+                'color' => 0xEF233C,
+                'fields' => [
+                    ['name' => 'Solde', 'value' => $this->money($balance, 'USD'), 'inline' => true],
+                    ['name' => 'Seuil', 'value' => $this->money((float) $partner->low_balance_threshold, 'USD'), 'inline' => true],
+                    ['name' => 'Action', 'value' => 'Notifier le partenaire ou attendre sa recharge Moneroo.', 'inline' => false],
+                ],
+                'footer' => ['text' => 'ASTRAL4GAMER - Surveillance reseller'],
                 'timestamp' => now()->toIso8601String(),
             ]],
         ]);

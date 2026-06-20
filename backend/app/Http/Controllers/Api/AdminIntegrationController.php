@@ -12,12 +12,16 @@ class AdminIntegrationController extends Controller
 {
     public function google()
     {
-        $googleAccount = GoogleAccount::query()->latest()->first();
-        $lastError = ApiLog::query()
-            ->whereIn('service', ['google', 'blogger'])
-            ->where('status_code', '>=', 400)
-            ->latest()
-            ->first();
+        $googleAccount = Schema::hasTable('google_accounts')
+            ? GoogleAccount::query()->latest()->first()
+            : null;
+        $lastError = Schema::hasTable('api_logs')
+            ? ApiLog::query()
+                ->whereIn('service', ['google', 'blogger'])
+                ->where('status_code', '>=', 400)
+                ->latest()
+                ->first()
+            : null;
 
         return response()->json([
             'google_people_connected' => (bool) $googleAccount,
@@ -31,11 +35,13 @@ class AdminIntegrationController extends Controller
 
     public function blog()
     {
+        $ready = Schema::hasTable('blog_posts');
+
         return response()->json([
-            'drafts' => BlogPost::where('status', 'draft')->count(),
-            'published' => BlogPost::where('status', 'published')->count(),
-            'failed' => BlogPost::where('status', 'failed')->count(),
-            'blog_table_ready' => Schema::hasTable('blog_posts'),
+            'drafts' => $ready ? BlogPost::where('status', 'draft')->count() : 0,
+            'published' => $ready ? BlogPost::where('status', 'published')->count() : 0,
+            'failed' => $ready ? BlogPost::where('status', 'failed')->count() : 0,
+            'blog_table_ready' => $ready,
         ]);
     }
 }

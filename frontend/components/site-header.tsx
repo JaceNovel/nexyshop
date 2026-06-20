@@ -1,9 +1,13 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { Bell, ChevronDown, Copy, Gift, Globe2, Loader2, Mail, Search, ShoppingCart, X } from "lucide-react";
+import { Bell, ChevronDown, Copy, Gift, Globe2, Home, Loader2, Mail, Menu, Search, ShoppingCart, UserRound, X } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { useCart } from "@/components/cart-provider";
+import { CountryFlag } from "@/components/country-flag";
+import { useLanguage, type DisplayCurrency, type SiteLanguage } from "@/components/language-provider";
+import { resolveCatalogImage } from "@/lib/catalog-images";
 import { getAstralMails, getCatalogProducts, getHeaderNotifications, markAstralMailRead, type AstralMailMessage, type CatalogProduct, type HeaderNotification } from "@/lib/api";
 
 const brandLogo = "/ChatGPT_Image_28_mai_2026__20_26_02-removebg-preview.png";
@@ -57,19 +61,6 @@ const liveItems = [
   { name: "Lives passés", image: "/unnamed.png", href: "/live/passe" }
 ] satisfies NavMenuItem[];
 
-const menuFallbackImage = "/icon.svg";
-
-function productMenuImage(product: Pick<CatalogProduct, "image_url" | "name" | "game">) {
-  const image = product.image_url?.trim();
-  const identity = `${product.name} ${product.game}`.toLowerCase();
-
-  if (image && (!image.toLowerCase().includes("pubg") || identity.includes("pubg"))) {
-    return image;
-  }
-
-  return menuFallbackImage;
-}
-
 function productsToMenuItems(products: CatalogProduct[], limit = 24): NavMenuItem[] {
   const byName = new Map<string, CatalogProduct>();
 
@@ -83,24 +74,31 @@ function productsToMenuItems(products: CatalogProduct[], limit = 24): NavMenuIte
 
   return Array.from(byName.values()).slice(0, limit).map((product) => ({
     name: product.name,
-    image: productMenuImage(product),
+    image: resolveCatalogImage(product),
     href: `/product/${product.id}`
   }));
 }
 
-function catalogProductPrice(product: CatalogProduct) {
+function catalogProductPrice(
+  product: CatalogProduct,
+  language: SiteLanguage,
+  formatMoney: (value: number, sourceCurrency?: string, options?: { unavailableLabel?: string; prefix?: string }) => string
+) {
   const variationPrices = (product.variations ?? [])
     .map((variation) => Number(variation.price))
     .filter((price) => price > 0);
   const price = Number(product.price) > 0 ? Number(product.price) : Math.min(...variationPrices);
 
   if (!Number.isFinite(price) || price <= 0) {
-    return "Prix indisponible";
+    return language === "fr" ? "Prix indisponible" : "Price unavailable";
   }
 
   const hasRange = variationPrices.length > 1 || Boolean(product.price_range?.min && product.price_range?.max && product.price_range.min !== product.price_range.max);
 
-  return `${hasRange ? "Dès " : ""}${new Intl.NumberFormat("fr-FR").format(price)} ${product.currency}`;
+  return formatMoney(price, product.currency, {
+    prefix: hasRange ? (language === "fr" ? "Dès " : "From ") : "",
+    unavailableLabel: language === "fr" ? "Prix indisponible" : "Price unavailable"
+  });
 }
 
 function NavLink({ href, children }: { href: string; children: ReactNode }) {
@@ -116,9 +114,17 @@ function isMobileViewport() {
 }
 
 function MobileNavSheet({ title, href, items, onClose }: { title: string; href: string; items: NavMenuItem[]; onClose: () => void }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-[120] bg-black/45 p-3 md:hidden" role="dialog" aria-modal="true">
-      <div className="ml-auto flex max-h-[88vh] w-full max-w-[420px] flex-col overflow-hidden rounded-lg bg-white shadow-[0_24px_70px_rgba(15,23,42,.28)]">
+    <div className="fixed inset-0 z-[120] bg-black/45 p-3 md:hidden" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="ml-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[420px] flex-col overflow-hidden rounded-lg bg-white shadow-[0_24px_70px_rgba(15,23,42,.28)]" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-4 py-3">
           <div>
             <p className="text-xs font-medium uppercase text-[#e52b2f]">Astral4Gamer</p>
@@ -167,9 +173,9 @@ function NavDropdown({ href, label, items }: { href: string; label: string; item
       <div className="invisible absolute left-0 top-12 z-50 hidden w-[min(1024px,calc(100vw-2rem))] rounded-b-lg bg-[#f3f3f3] px-4 pb-4 pt-6 opacity-0 shadow-[0_12px_32px_rgba(16,24,40,.12)] transition group-hover:visible group-hover:opacity-100 md:block">
         <div className="grid grid-cols-3 gap-x-14 gap-y-4 font-normal">
           {items.length ? items.map((item) => (
-            <a key={item.name} href={item.href} className="flex items-center gap-3 rounded-md px-2 py-1 text-black transition hover:-translate-y-0.5 hover:shadow-[0_8px_18px_rgba(16,24,40,.1)]">
-              <img src={item.image} alt="" className="h-6 w-6 rounded object-cover" />
-              {item.name}
+            <a key={item.name} href={item.href} className="flex min-w-0 items-center gap-3 rounded-md px-2 py-2 text-black transition hover:-translate-y-0.5 hover:shadow-[0_8px_18px_rgba(16,24,40,.1)]">
+              <img src={item.image} alt="" className="h-9 w-9 shrink-0 rounded-lg bg-[#f4f4f5] object-contain p-1" />
+              <span className="line-clamp-2 min-w-0 break-words text-[14px] leading-5">{item.name}</span>
             </a>
           )) : <p className="col-span-3 rounded-lg bg-white px-4 py-8 text-center text-sm font-normal text-[#667085]">Chargement du catalogue...</p>}
         </div>
@@ -182,7 +188,7 @@ function NavDropdown({ href, label, items }: { href: string; label: string; item
   );
 }
 
-function LiveDropdown() {
+function LiveDropdown({ label = "Live Direct" }: { label?: string }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -197,7 +203,7 @@ function LiveDropdown() {
         }}
         className="interactive-link flex h-10 items-center gap-1 text-[#0057d9] md:h-12"
       >
-        Live Direct <ChevronDown className="h-4 w-4 stroke-[2.4] transition group-hover:rotate-180" />
+        {label} <ChevronDown className="h-4 w-4 stroke-[2.4] transition group-hover:rotate-180" />
       </a>
       <div className="invisible absolute left-0 top-12 z-50 hidden w-48 rounded-b-lg bg-white p-2 opacity-0 shadow-[0_12px_32px_rgba(16,24,40,.12)] ring-1 ring-[#edf0f4] transition group-hover:visible group-hover:opacity-100 md:block">
         <a href="/live" className="flex h-10 items-center gap-2 rounded-md px-3 text-sm font-normal text-[#111827] transition hover:bg-[#f8fafc] hover:text-[#0057d9]">
@@ -208,7 +214,7 @@ function LiveDropdown() {
           Live Passé
         </a>
       </div>
-      {mobileOpen ? <MobileNavSheet title="Live Direct" href="/live" items={liveItems} onClose={() => setMobileOpen(false)} /> : null}
+      {mobileOpen ? <MobileNavSheet title={label} href="/live" items={liveItems} onClose={() => setMobileOpen(false)} /> : null}
     </div>
   );
 }
@@ -240,6 +246,8 @@ function PubgDropdown() {
 
 export function SiteHeader() {
   const { isSignedIn, user } = useUser();
+  const { itemCount, openCart } = useCart();
+  const { language, currency, setLanguage, setCurrency, t, formatMoney } = useLanguage();
   const [searchValue, setSearchValue] = useState("");
   const [redeemPayload, setRedeemPayload] = useState<RedeemPayload | null>(null);
   const [redeemOpen, setRedeemOpen] = useState(false);
@@ -258,6 +266,23 @@ export function SiteHeader() {
   const [searchSuggestions, setSearchSuggestions] = useState<CatalogProduct[]>([]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+
+  useEffect(() => {
+    function closeSearch(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSearchFocused(false);
+        setNotificationOpen(false);
+        setMailOpen(false);
+        setLanguageOpen(false);
+        setCategorySheetOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", closeSearch);
+    return () => window.removeEventListener("keydown", closeSearch);
+  }, []);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -271,7 +296,7 @@ export function SiteHeader() {
       return;
     }
 
-    window.location.href = `/category/top-up?q=${encodeURIComponent(query)}`;
+    window.location.href = catalogSearchHref(query);
   }
 
   useEffect(() => {
@@ -493,18 +518,18 @@ export function SiteHeader() {
 
   return (
     <header className="border-b border-[#e5e7eb] bg-white">
-      <div className="relative flex h-8 items-center justify-center bg-[#e52b2f] px-3 text-center text-[11px] font-semibold text-white md:h-10 md:px-4 md:text-sm">
-        <span className="truncate">Offres Astral4Gamer: recharges, cartes cadeaux et tournois.</span>
+      <div className="relative flex h-10 items-center justify-center bg-[#e52b2f] px-8 text-center text-[11px] font-semibold leading-4 text-white md:h-10 md:px-4 md:text-sm">
+        <span className="truncate">{t("offers")}</span>
         <X className="absolute right-4 hidden h-5 w-5 md:block" />
       </div>
       <div className="mx-auto max-w-[1452px] px-3 sm:px-6">
-        <div className="flex min-h-[74px] flex-wrap items-center gap-3 py-2 md:h-[108px] md:flex-nowrap md:gap-8 md:py-0">
-          <a href="/" className="flex min-w-0 shrink-0 items-center gap-2 transition hover:scale-[1.01] md:min-w-[300px] md:gap-3 xl:min-w-[360px]" aria-label="Astral4Gamer">
-            <span className="relative h-12 w-12 shrink-0 overflow-hidden md:h-[96px] md:w-[96px]">
-              <img src={brandLogo} alt="" className="absolute left-[-36px] top-[-7px] h-auto w-[116px] max-w-none md:left-[-72px] md:top-[-13px] md:w-[232px]" />
+        <div className="flex min-h-[58px] flex-wrap items-center gap-x-2 gap-y-2 py-2 md:h-[108px] md:flex-nowrap md:gap-8 md:py-0">
+          <a href="/" className="flex min-w-0 shrink-0 items-center gap-1.5 transition active:scale-[.98] md:min-w-[300px] md:gap-3 md:hover:scale-[1.01] xl:min-w-[360px]" aria-label="Astral4Gamer">
+            <span className="relative h-9 w-9 shrink-0 overflow-hidden sm:h-12 sm:w-12 md:h-[96px] md:w-[96px]">
+              <img src={brandLogo} alt="" className="absolute left-[-32px] top-[-6px] h-auto w-[104px] max-w-none md:left-[-72px] md:top-[-13px] md:w-[232px]" />
             </span>
             <span className="flex flex-col leading-none">
-              <span className="text-[18px] font-black italic tracking-normal text-black sm:text-[22px] md:text-[31px]">
+              <span className="text-[17px] font-black italic tracking-normal text-black min-[375px]:text-[19px] sm:text-[22px] md:text-[31px]">
                 ASTRAL<span className="text-[#e52b2f]">4</span>GAMER
               </span>
               <span className="mt-1 hidden text-center text-[8px] font-black tracking-[.24em] text-black sm:block md:mt-3 md:text-[10px] md:tracking-[.48em]">
@@ -512,40 +537,45 @@ export function SiteHeader() {
               </span>
             </span>
           </a>
-          <form onSubmit={submitSearch} className="relative order-3 w-full flex-1 md:order-none md:w-auto">
+          <form onSubmit={submitSearch} className="relative order-3 w-full basis-full md:order-none md:w-auto md:basis-auto md:flex-1">
             <label className="group flex h-10 items-center rounded-lg bg-[#f4f4f5] px-3 text-[#5f6673] transition focus-within:bg-white focus-within:shadow-[0_0_0_2px_rgba(11,103,240,.18),0_12px_30px_rgba(16,24,40,.08)] md:h-12 md:px-4">
               <Search className="mr-2 h-4 w-4 transition group-focus-within:text-[#0b67f0] md:mr-3 md:h-5 md:w-5" />
               <input
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
-                onFocus={() => setSearchFocused(true)}
+                onFocus={() => {
+                  setSearchFocused(true);
+                  setNotificationOpen(false);
+                  setMailOpen(false);
+                  setLanguageOpen(false);
+                }}
                 onBlur={() => window.setTimeout(() => setSearchFocused(false), 140)}
                 className="w-full bg-transparent text-[14px] outline-none placeholder:text-[#4b5563] md:text-[15px]"
-                placeholder="Rechercher..."
+                placeholder={t("search")}
               />
             </label>
             {searchFocused && !redeemOpen && searchValue.trim().length >= 2 ? (
-              <div className="fixed left-3 right-3 top-[122px] z-[110] max-h-[68vh] overflow-hidden rounded-lg border border-[#e5e7eb] bg-white shadow-[0_22px_60px_rgba(16,24,40,.22)] md:absolute md:left-0 md:right-auto md:top-[58px] md:max-h-none md:w-full md:max-w-[720px]">
+              <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[110] max-h-[min(62dvh,480px)] overflow-hidden rounded-xl border border-[#e5e7eb] bg-white shadow-[0_22px_60px_rgba(16,24,40,.22)] md:right-auto md:top-[58px] md:max-h-none md:w-full md:max-w-[720px]">
                 <div className="flex items-center justify-between border-b border-[#edf0f4] px-3 py-2">
-                  <p className="text-xs font-medium uppercase text-[#667085]">Résultats rapides</p>
+                  <p className="text-xs font-medium uppercase text-[#667085]">{t("quickResults")}</p>
                   <a
-                    href={`/category/top-up?q=${encodeURIComponent(searchValue.trim())}`}
+                    href={catalogSearchHref(searchValue.trim())}
                     onMouseDown={(event) => {
                       event.preventDefault();
-                      window.location.href = `/category/top-up?q=${encodeURIComponent(searchValue.trim())}`;
+                      window.location.href = catalogSearchHref(searchValue.trim());
                     }}
                     className="text-xs font-medium text-[#0057d9]"
                   >
-                    Voir tout
+                    {t("seeAll")}
                   </a>
                 </div>
                 {searchLoading ? (
                   <div className="flex h-20 items-center justify-center gap-2 text-sm font-normal text-[#667085]">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Recherche...
+                    {t("searching")}
                   </div>
                 ) : searchSuggestions.length ? (
-                  <div className="max-h-[calc(68vh-46px)] overflow-y-auto p-2 md:max-h-[380px]">
+                  <div className="max-h-[calc(min(62dvh,480px)-46px)] overflow-y-auto overscroll-contain p-2 md:max-h-[380px]">
                     {searchSuggestions.map((product) => (
                       <a
                         key={product.id}
@@ -554,22 +584,22 @@ export function SiteHeader() {
                           event.preventDefault();
                           window.location.href = `/product/${product.id}`;
                         }}
-                        className="grid grid-cols-[46px_1fr] items-center gap-2 rounded-lg px-2 py-2 transition hover:bg-[#f8fafc] sm:grid-cols-[48px_1fr_auto] sm:gap-3"
+                        className="grid min-h-[62px] grid-cols-[46px_minmax(0,1fr)] items-center gap-2 rounded-lg px-2 py-2 transition active:scale-[.99] active:bg-[#f1f5f9] hover:bg-[#f8fafc] sm:grid-cols-[48px_minmax(0,1fr)_auto] sm:gap-3"
                       >
-                        <img src={productMenuImage(product)} alt="" className="h-11 w-11 shrink-0 rounded-lg bg-[#f4f4f5] object-contain p-1.5 sm:h-12 sm:w-12" />
+                        <img src={resolveCatalogImage(product)} alt="" className="h-11 w-11 shrink-0 rounded-lg bg-[#f4f4f5] object-contain p-1.5 sm:h-12 sm:w-12" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-normal text-[#111827]">{product.name}</span>
                           <span className="mt-0.5 block truncate text-xs font-semibold text-[#667085]">{product.category ?? product.type ?? "Catalogue"}</span>
-                          <span className="mt-1 block text-xs font-normal text-[#111827] sm:hidden">{catalogProductPrice(product)}</span>
+                          <span className="mt-1 block text-xs font-normal text-[#111827] sm:hidden">{catalogProductPrice(product, language, formatMoney)}</span>
                         </span>
-                        <span className="hidden shrink-0 text-right text-xs font-normal text-[#111827] sm:block">{catalogProductPrice(product)}</span>
+                        <span className="hidden shrink-0 text-right text-xs font-normal text-[#111827] sm:block">{catalogProductPrice(product, language, formatMoney)}</span>
                       </a>
                     ))}
                   </div>
                 ) : (
                   <div className="px-4 py-6 text-center">
-                    <p className="text-sm font-normal text-[#111827]">Aucun produit trouvé</p>
-                    <p className="mt-1 text-xs font-semibold text-[#667085]">Essaie un autre mot-clé.</p>
+                    <p className="text-sm font-normal text-[#111827]">{t("noProduct")}</p>
+                    <p className="mt-1 text-xs font-semibold text-[#667085]">{t("tryAnother")}</p>
                   </div>
                 )}
               </div>
@@ -639,46 +669,251 @@ export function SiteHeader() {
               </div>
             ) : null}
           </form>
-          <div className="ml-auto flex min-w-0 items-center justify-end gap-1.5 text-black sm:gap-2 md:min-w-[120px] md:gap-5">
-            <button className="interactive-icon relative hidden h-10 w-10 place-items-center rounded-full hover:bg-[#f4f4f5] sm:grid" aria-label="Langue">
-              <Globe2 className="h-6 w-6" />
-              <span className="absolute bottom-0 right-0 rounded-sm bg-[#0957ef] px-1 text-[10px] font-bold leading-3 text-white">FR</span>
-            </button>
-            <button className="interactive-icon grid h-9 w-9 place-items-center rounded-full hover:bg-[#f4f4f5] md:h-10 md:w-10" aria-label="Panier">
-              <ShoppingCart className="h-5 w-5 md:h-6 md:w-6" />
-            </button>
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-1 text-black sm:gap-2 md:min-w-[120px] md:gap-5">
             <div className="relative">
-              <HeaderBadgeButton label="Notifications" count={notificationCount} icon={<Bell className="h-5 w-5" />} onClick={() => setNotificationOpen((open) => !open)} />
+              <button type="button" onClick={() => {
+                setLanguageOpen((open) => !open);
+                setNotificationOpen(false);
+                setMailOpen(false);
+                setSearchFocused(false);
+              }} className="interactive-icon relative grid h-9 w-9 place-items-center rounded-full hover:bg-[#f4f4f5] md:h-10 md:w-10" aria-label={t("language")} aria-expanded={languageOpen}>
+                <Globe2 className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="absolute -bottom-0.5 -right-0.5 rounded-sm bg-[#0957ef] px-1 text-[9px] font-bold uppercase leading-3 text-white">{language}</span>
+              </button>
+              {languageOpen ? <LanguageMenu language={language} currency={currency} onSelect={(nextLanguage) => {
+                setLanguage(nextLanguage);
+              }} onCurrencySelect={(nextCurrency) => {
+                setCurrency(nextCurrency);
+                setLanguageOpen(false);
+              }} /> : null}
+            </div>
+            <button type="button" onClick={openCart} className="interactive-icon relative grid h-9 w-9 place-items-center rounded-full hover:bg-[#f4f4f5] md:h-10 md:w-10" aria-label={t("cart")}>
+              <ShoppingCart className="h-5 w-5 md:h-6 md:w-6" />
+              {itemCount > 0 ? <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[#e52b2f] px-1 text-[10px] font-black text-white ring-2 ring-white">{itemCount > 99 ? "99+" : itemCount}</span> : null}
+            </button>
+            <div className="relative hidden sm:block">
+              <HeaderBadgeButton label={t("notifications")} count={notificationCount} icon={<Bell className="h-5 w-5" />} onClick={() => {
+                setNotificationOpen((open) => !open);
+                setMailOpen(false);
+                setSearchFocused(false);
+                setLanguageOpen(false);
+              }} />
               {notificationOpen ? <NotificationMenu items={notifications} onClose={() => setNotificationOpen(false)} /> : null}
             </div>
-            <div className="relative">
-              <HeaderBadgeButton label="Messages Astral4Gamer" count={mailCount} icon={<Mail className="h-5 w-5" />} onClick={() => setMailOpen((open) => !open)} />
+            <div className="relative hidden sm:block">
+              <HeaderBadgeButton label={t("messages")} count={mailCount} icon={<Mail className="h-5 w-5" />} onClick={() => {
+                setMailOpen((open) => !open);
+                setNotificationOpen(false);
+                setSearchFocused(false);
+                setLanguageOpen(false);
+              }} />
               {mailOpen ? <MailMenu messages={mailMessages} onClose={() => setMailOpen(false)} onRead={(message) => {
                 if (message.mail_id) {
                   markAstralMailRead(localStorage.getItem("nexy_sanctum_token"), message.mail_id);
                 }
               }} /> : null}
             </div>
-            <NexyAccountSlot />
+            <NexyAccountSlot compactOnMobile />
           </div>
         </div>
 
-        <nav className="mobile-scroll flex h-11 items-center gap-4 overflow-x-auto whitespace-nowrap text-[13px] font-normal md:h-12 md:overflow-visible md:gap-8 md:text-[16px]">
-          <NavLink href="/">Accueil</NavLink>
-          <NavDropdown href="/category/top-up" label="Game Credits" items={topUpItems} />
-          <NavDropdown href="/category/carte-cadeau" label="Gift Cards" items={giftItems} />
-	          <LiveDropdown />
+        <nav className="hidden h-11 items-center gap-4 overflow-x-auto whitespace-nowrap text-[13px] font-normal md:flex md:h-12 md:overflow-visible md:gap-8 md:text-[16px]">
+	          <NavLink href="/">{t("home")}</NavLink>
+          <NavDropdown href="/category/top-up" label={t("gameCredits")} items={topUpItems} />
+          <NavDropdown href="/category/carte-cadeau" label={t("giftCards")} items={giftItems} />
+	          <LiveDropdown label={t("live")} />
 	          {showPubgNav ? <PubgDropdown /> : null}
-	          <NavLink href="/tournois">Tournois</NavLink>
-	          {!showPubgNav && !showCodNav ? <NavLink href="/duel">Duel 1V1</NavLink> : null}
-	          <NavLink href="/communaute">Communauté</NavLink>
-	          <NavLink href="/profil-public">Profil public</NavLink>
-	          {!showCodNav ? <NavLink href="/partenariat">Partenariat</NavLink> : null}
-	          <NavLink href="/jeux-avenir">Jeux à venir</NavLink>
-	          <NavLink href="/blog">Blog</NavLink>
+	          <NavLink href="/tournois">{t("tournaments")}</NavLink>
+	          {!showPubgNav && !showCodNav ? <NavLink href="/duel">{t("duel")}</NavLink> : null}
+	          <NavLink href="/communaute">{t("community")}</NavLink>
+	          <NavLink href="/profil-public">{t("publicProfile")}</NavLink>
+	          {!showCodNav ? <NavLink href="/partenariat">{t("partnership")}</NavLink> : null}
+	          <NavLink href="/jeux-avenir">{t("upcoming")}</NavLink>
+	          <NavLink href="/blog">{t("blog")}</NavLink>
         </nav>
       </div>
+      {categorySheetOpen ? (
+        <MobileCategoryDrawer
+          topUpItems={topUpItems}
+          giftItems={giftItems}
+          liveItems={liveItems}
+          labels={{
+            title: language === "fr" ? "Catégories" : "Categories",
+            home: t("home"),
+            gameCredits: t("gameCredits"),
+            giftCards: t("giftCards"),
+            paymentServices: language === "fr" ? "Services de paiement" : "Payment Services",
+            live: t("live"),
+            blog: t("blog"),
+            seeAll: t("seeAll")
+          }}
+          onClose={() => setCategorySheetOpen(false)}
+        />
+      ) : null}
+      <MobileBottomNavigation
+        itemCount={itemCount}
+        labels={{
+          home: t("home"),
+          categories: language === "fr" ? "Catégories" : "Categories",
+          cart: t("cart"),
+          account: language === "fr" ? "Mon Compte" : "Account"
+        }}
+        onOpenCategories={() => setCategorySheetOpen(true)}
+        onOpenCart={openCart}
+      />
     </header>
+  );
+}
+
+function LanguageMenu({
+  language,
+  currency,
+  onSelect,
+  onCurrencySelect
+}: {
+  language: SiteLanguage;
+  currency: DisplayCurrency;
+  onSelect: (language: SiteLanguage) => void;
+  onCurrencySelect: (currency: DisplayCurrency) => void;
+}) {
+  const options: Array<{ code: SiteLanguage; label: string; country: string }> = [
+    { code: "fr", label: "Français", country: "FR" },
+    { code: "en", label: "English", country: "US" }
+  ];
+  const currencies: Array<{ code: DisplayCurrency; label: string }> = [
+    { code: "USD", label: "USD" },
+    { code: "EUR", label: "EUR" },
+    { code: "XOF", label: "FCFA" }
+  ];
+
+  return (
+    <div className="fixed bottom-3 left-3 right-3 z-[130] overflow-hidden rounded-xl border border-[#e5e7eb] bg-white p-2 shadow-[0_22px_60px_rgba(16,24,40,.22)] sm:absolute sm:bottom-auto sm:left-auto sm:right-0 sm:top-12 sm:w-56" role="menu">
+      {options.map((option) => (
+        <button key={option.code} type="button" onClick={() => onSelect(option.code)} className={`flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition hover:bg-[#f8fafc] ${language === option.code ? "bg-[#eff6ff] text-[#0b55d9]" : "text-[#111827]"}`} role="menuitem">
+          <span className="grid h-7 w-9 place-items-center rounded bg-[#f8fafc] ring-1 ring-[#e5e7eb]">
+            <CountryFlag code={option.country} label={option.label} />
+          </span>
+          <span className="font-semibold">{option.label}</span>
+          {language === option.code ? <span className="ml-auto h-2 w-2 rounded-full bg-[#0b55d9]" /> : null}
+        </button>
+      ))}
+      <div className="my-2 h-px bg-[#edf0f4]" />
+      <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.14em] text-[#667085]">{language === "fr" ? "Devise" : "Currency"}</p>
+      <div className="grid grid-cols-3 gap-1 px-1 pb-1">
+        {currencies.map((option) => (
+          <button key={option.code} type="button" onClick={() => onCurrencySelect(option.code)} className={`h-9 rounded-lg text-xs font-black transition hover:bg-[#f8fafc] ${currency === option.code ? "bg-[#111827] text-white" : "bg-[#f4f4f5] text-[#111827]"}`} role="menuitem">
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobileBottomNavigation({ itemCount, labels, onOpenCategories, onOpenCart }: {
+  itemCount: number;
+  labels: { home: string; categories: string; cart: string; account: string };
+  onOpenCategories: () => void;
+  onOpenCart: () => void;
+}) {
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-[95] grid h-[64px] grid-cols-4 border-t border-[#e5e7eb] bg-white/98 px-2 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_28px_rgba(16,24,40,.08)] backdrop-blur md:hidden" aria-label="Navigation mobile">
+      <a href="/" className="interactive-icon flex flex-col items-center justify-center gap-0.5 text-[#0b55d9]">
+        <Home className="h-6 w-6" />
+        <span className="text-[11px] font-medium">{labels.home}</span>
+      </a>
+      <button type="button" onClick={onOpenCategories} className="interactive-icon flex flex-col items-center justify-center gap-0.5 text-[#4b5563]">
+        <Menu className="h-6 w-6" />
+        <span className="text-[11px] font-medium">{labels.categories}</span>
+      </button>
+      <button type="button" onClick={onOpenCart} className="interactive-icon relative flex flex-col items-center justify-center gap-0.5 text-[#4b5563]">
+        <span className="relative">
+          <ShoppingCart className="h-6 w-6" />
+          {itemCount > 0 ? <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-[#e52b2f] px-1 text-[10px] font-black text-white">{itemCount > 99 ? "99+" : itemCount}</span> : null}
+        </span>
+        <span className="text-[11px] font-medium">{labels.cart}</span>
+      </button>
+      <a href="/profil" className="interactive-icon flex flex-col items-center justify-center gap-0.5 text-[#4b5563]">
+        <UserRound className="h-6 w-6" />
+        <span className="text-[11px] font-medium">{labels.account}</span>
+      </a>
+    </nav>
+  );
+}
+
+function MobileCategoryDrawer({ topUpItems, giftItems, liveItems, labels, onClose }: {
+  topUpItems: NavMenuItem[];
+  giftItems: NavMenuItem[];
+  liveItems: NavMenuItem[];
+  labels: {
+    title: string;
+    home: string;
+    gameCredits: string;
+    giftCards: string;
+    paymentServices: string;
+    live: string;
+    blog: string;
+    seeAll: string;
+  };
+  onClose: () => void;
+}) {
+  const [openSection, setOpenSection] = useState<string | null>("game");
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  const sections = [
+    { key: "game", label: labels.gameCredits, href: "/category/top-up", items: topUpItems },
+    { key: "gift", label: labels.giftCards, href: "/category/carte-cadeau", items: giftItems },
+    { key: "payment", label: labels.paymentServices, href: "/category/manual-services", items: [] },
+    { key: "live", label: labels.live, href: "/live", items: liveItems }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[140] bg-black/35 md:hidden" role="dialog" aria-modal="true" aria-label={labels.title} onClick={onClose}>
+      <section className="flex h-[100dvh] w-full max-w-[440px] flex-col bg-white shadow-[22px_0_70px_rgba(15,23,42,.22)]" onClick={(event) => event.stopPropagation()}>
+        <header className="flex h-14 items-center gap-3 border-b border-[#e5e7eb] px-4">
+          <button type="button" onClick={onClose} className="interactive-icon grid h-10 w-10 place-items-center rounded-full hover:bg-[#f4f4f5]" aria-label="Fermer">
+            <X className="h-6 w-6" />
+          </button>
+          <h2 className="text-base font-black text-[#111827]">{labels.title}</h2>
+        </header>
+        <div className="flex-1 overflow-y-auto px-4 py-5">
+          <a href="/" onClick={onClose} className="flex min-h-11 items-center text-[15px] font-medium text-[#111827]">{labels.home}</a>
+          {sections.map((section) => {
+            const open = openSection === section.key;
+
+            return (
+              <div key={section.key} className="border-b border-[#f1f2f4] py-1 last:border-b-0">
+                <button type="button" onClick={() => setOpenSection(open ? null : section.key)} className="flex min-h-12 w-full items-center justify-between text-left text-[15px] font-medium text-[#111827]">
+                  {section.label}
+                  <ChevronDown className={`h-5 w-5 transition ${open ? "rotate-180" : ""}`} />
+                </button>
+                {open ? (
+                  <div className="grid gap-1 pb-3">
+                    {section.items.slice(0, 10).map((item) => (
+                      <a key={item.name} href={item.href} onClick={onClose} className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm text-[#374151] hover:bg-[#f8fafc]">
+                        <img src={item.image} alt="" className="h-8 w-8 rounded-lg object-cover" />
+                        <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                      </a>
+                    ))}
+                    <a href={section.href} onClick={onClose} className="mt-1 inline-flex h-10 items-center justify-center rounded-lg bg-[#0b55d9] px-3 text-sm font-bold text-white">
+                      {labels.seeAll}
+                    </a>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          <a href="/blog" onClick={onClose} className="flex min-h-12 items-center text-[15px] font-medium text-[#111827]">{labels.blog}</a>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -697,7 +932,7 @@ function HeaderBadgeButton({ label, count, icon, onClick }: { label: string; cou
 
 function NotificationMenu({ items, onClose }: { items: HeaderNotification[]; onClose: () => void }) {
   return (
-    <div className="fixed left-3 right-3 top-[126px] z-[90] rounded-lg border border-[#e5e7eb] bg-white p-3 shadow-[0_22px_60px_rgba(16,24,40,.18)] md:absolute md:left-auto md:right-0 md:top-12 md:w-[340px]">
+    <div className="fixed bottom-3 left-3 right-3 z-[90] max-h-[75dvh] overflow-hidden rounded-xl border border-[#e5e7eb] bg-white p-3 shadow-[0_22px_60px_rgba(16,24,40,.18)] md:absolute md:bottom-auto md:left-auto md:right-0 md:top-12 md:w-[340px]">
       <MenuHeader title="Notifications" onClose={onClose} />
       <div className="mt-2 max-h-[340px] overflow-y-auto pr-1">
         {items.length ? items.slice(0, 8).map((item) => (
@@ -716,7 +951,7 @@ function NotificationMenu({ items, onClose }: { items: HeaderNotification[]; onC
 
 function MailMenu({ messages, onClose, onRead }: { messages: AstralMailMessage[]; onClose: () => void; onRead: (message: AstralMailMessage) => void }) {
   return (
-    <div className="fixed left-3 right-3 top-[126px] z-[90] rounded-lg border border-[#e5e7eb] bg-white p-3 shadow-[0_22px_60px_rgba(16,24,40,.18)] md:absolute md:left-auto md:right-0 md:top-12 md:w-[360px]">
+    <div className="fixed bottom-3 left-3 right-3 z-[90] max-h-[75dvh] overflow-hidden rounded-xl border border-[#e5e7eb] bg-white p-3 shadow-[0_22px_60px_rgba(16,24,40,.18)] md:absolute md:bottom-auto md:left-auto md:right-0 md:top-12 md:w-[360px]">
       <MenuHeader title="Messages Astral4Gamer" onClose={onClose} />
       <div className="mt-2 max-h-[340px] overflow-y-auto pr-1">
         {messages.length ? messages.slice(0, 8).map((message) => (
@@ -766,8 +1001,9 @@ function mailLabel(type: AstralMailMessage["type"]) {
   }[type];
 }
 
-function NexyAccountSlot() {
+function NexyAccountSlot({ compactOnMobile = false }: { compactOnMobile?: boolean }) {
   const { isLoaded, isSignedIn, user } = useUser();
+  const { language } = useLanguage();
   const [session, setSession] = useState<{ token: string | null; name: string | null; avatar: string | null }>({ token: null, name: null, avatar: null });
   const [freeFireProfile, setFreeFireProfile] = useState<StoredFreeFireProfile | null>(null);
   const [fortniteProfile, setFortniteProfile] = useState<StoredFortniteProfile | null>(null);
@@ -865,7 +1101,7 @@ function NexyAccountSlot() {
     const initial = displayName.slice(0, 1).toUpperCase();
 
     return (
-      <a href="/profil" className="interactive-button flex h-9 items-center gap-2 rounded-full border border-[#ececf3] bg-white p-1 shadow-[0_8px_22px_rgba(16,24,40,.08)] md:h-[58px] md:gap-3 md:py-1.5 md:pl-1.5 md:pr-4">
+      <a href="/profil" className={`interactive-button flex h-9 items-center gap-2 rounded-full border border-[#ececf3] bg-white p-1 shadow-[0_8px_22px_rgba(16,24,40,.08)] md:h-[58px] md:gap-3 md:py-1.5 md:pl-1.5 ${compactOnMobile ? "md:pr-4" : "pr-4"}`}>
         {avatar ? (
           <img src={avatar} alt="" className="h-7 w-7 rounded-full object-cover ring-2 ring-[#e52b2f] md:h-12 md:w-12" />
         ) : (
@@ -875,7 +1111,7 @@ function NexyAccountSlot() {
           <span className="truncate text-sm font-black leading-5 text-[#111827]">{displayName}</span>
           <span className={`mt-0.5 inline-flex items-center gap-1.5 text-xs font-bold ${connectionQuality === "online" ? "text-emerald-600" : "text-amber-500"}`}>
             <span className={`h-2 w-2 rounded-full ${connectionQuality === "online" ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,.14)]" : "bg-amber-400 shadow-[0_0_0_3px_rgba(251,191,36,.18)]"} animate-pulse`} />
-            {connectionQuality === "online" ? "En ligne" : "Latence"}
+            {connectionQuality === "online" ? (language === "fr" ? "En ligne" : "Online") : (language === "fr" ? "Latence" : "Latency")}
           </span>
         </span>
       </a>
@@ -890,9 +1126,10 @@ function NexyAccountSlot() {
           event.preventDefault();
           window.location.assign("/connexion");
         }}
-        className="interactive-button inline-flex h-9 items-center rounded-md bg-[#e52b2f] px-3 text-xs font-black text-white shadow-[0_10px_24px_rgba(229,43,47,.22)] transition hover:bg-[#c91f27] md:h-10 md:px-4 md:text-sm"
+        className={`interactive-button inline-flex h-9 items-center justify-center rounded-full bg-[#e52b2f] text-xs font-black text-white shadow-[0_10px_24px_rgba(229,43,47,.22)] transition hover:bg-[#c91f27] md:h-10 md:rounded-md md:px-4 md:text-sm ${compactOnMobile ? "w-9 px-0 md:w-auto" : "px-3"}`}
       >
-        Connexion
+        <UserRound className={`${compactOnMobile ? "h-4 w-4 md:hidden" : "hidden"}`} />
+        <span className={compactOnMobile ? "hidden md:inline" : ""}>{language === "fr" ? "Connexion" : "Sign in"}</span>
       </a>
       <a
         href="/inscription"
@@ -902,7 +1139,7 @@ function NexyAccountSlot() {
         }}
         className="interactive-button hidden h-9 items-center rounded-md border border-[#e52b2f] bg-white px-3 text-xs font-black text-[#e52b2f] transition hover:bg-[#fff1f2] sm:inline-flex md:h-10 md:px-4 md:text-sm"
       >
-        S'inscrire
+        {language === "fr" ? "S'inscrire" : "Sign up"}
       </a>
     </div>
   );
@@ -951,4 +1188,8 @@ function normalizeSearch(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function catalogSearchHref(query: string) {
+  return `/category/catalogue?q=${encodeURIComponent(query.trim())}`;
 }

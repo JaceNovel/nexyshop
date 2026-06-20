@@ -7,6 +7,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class SteamService
@@ -104,6 +105,53 @@ class SteamService
         });
     }
 
+    public function upcomingReleases(int $count = 10): array
+    {
+        $minutes = (int) config('services.steam.news_cache_minutes', 60);
+
+        return Cache::remember('steam:upcoming-releases:'.$count, now()->addMinutes($minutes), function () use ($count) {
+            $items = collect($this->storeUpcomingItems())
+                ->filter(fn (array $item) => (int) ($item['type'] ?? 0) === 0)
+                ->filter(fn (array $item) => ! $this->isAdultStoreTitle((string) ($item['name'] ?? '')))
+                ->take(max(20, $count * 3))
+                ->values();
+
+            if ($items->isEmpty()) {
+                return [];
+            }
+
+            $details = $this->storeAppDetails($items->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+            return $items
+                ->map(function (array $item) use ($details) {
+                    $appid = (int) ($item['id'] ?? 0);
+                    $detail = $details[$appid]['data'] ?? [];
+                    $releaseDate = $this->normalizeStoreReleaseDate((string) Arr::get($detail, 'release_date.date', ''));
+
+                    return [
+                        'appid' => $appid,
+                        'release_timestamp' => $releaseDate ? strtotime($releaseDate) ?: PHP_INT_MAX : PHP_INT_MAX,
+                        'gameName' => (string) ($item['name'] ?? Arr::get($detail, 'name', 'Steam Upcoming')),
+                        'gameUrl' => 'https://store.steampowered.com/app/'.$appid,
+                        'releaseDate' => $releaseDate,
+                        'gameImage' => $item['large_capsule_image'] ?? $item['header_image'] ?? Arr::get($detail, 'header_image'),
+                        'price' => $this->storePriceLabel($item),
+                        'credits' => $this->storeGenresLabel(collect(Arr::get($detail, 'genres', []))),
+                    ];
+                })
+                ->filter(fn (array $game) => ! $this->isAdultStoreTitle((string) ($game['gameName'] ?? '')))
+                ->sortBy(fn (array $game) => $game['release_timestamp'] ?? PHP_INT_MAX)
+                ->take($count)
+                ->map(function (array $game) {
+                    unset($game['appid'], $game['release_timestamp']);
+
+                    return $game;
+                })
+                ->values()
+                ->all();
+        });
+    }
+
     public function globalAchievements(int $appid): array
     {
         $response = $this->client()->get('https://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/', [
@@ -189,6 +237,39 @@ class SteamService
         return config('services.steam.news_apps', []);
     }
 
+    private function storeUpcomingItems(): array
+    {
+        $response = $this->client()->get('https://store.steampowered.com/api/featuredcategories', [
+            'cc' => 'us',
+            'l' => 'english',
+        ]);
+
+        $response->throw();
+
+        return $response->json('coming_soon.items', []);
+    }
+
+    private function storeAppDetails(array $appIds): array
+    {
+        if ($appIds === []) {
+            return [];
+        }
+
+        return collect(array_unique($appIds))
+            ->mapWithKeys(function (int $appId) {
+                $response = $this->client()->get('https://store.steampowered.com/api/appdetails', [
+                    'appids' => $appId,
+                    'cc' => 'us',
+                    'l' => 'english',
+                ]);
+
+                $response->throw();
+
+                return [$appId => ($response->json((string) $appId) ?? [])];
+            })
+            ->all();
+    }
+
     private function playerSummaries(array $steamIds): array
     {
         $key = (string) config('services.steam.key');
@@ -241,6 +322,54 @@ class SteamService
     private function client(): PendingRequest
     {
         return Http::timeout(12)->acceptJson();
+    }
+
+    private function normalizeStoreReleaseDate(string $value): ?string
+    {
+        $value = trim($value);
+
+        if ($value === '' || in_array(Str::lower($value), ['coming soon', 'to be announced'], true)) {
+            return null;
+        }
+
+        $timestamp = strtotime($value);
+
+        if ($timestamp === false) {
+            return null;
+        }
+
+        return date('Y-m-d', $timestamp);
+    }
+
+    private function storePriceLabel(array $item): ?string
+    {
+        $currency = (string) ($item['currency'] ?? 'USD');
+        $finalPrice = $item['final_price'] ?? null;
+        $originalPrice = $item['original_price'] ?? null;
+
+        foreach ([$finalPrice, $originalPrice] as $amount) {
+            if (is_numeric($amount) && (int) $amount > 0) {
+                return number_format(((int) $amount) / 100, 2, '.', '').' '.$currency;
+            }
+        }
+
+        return null;
+    }
+
+    private function storeGenresLabel(Collection $genres): ?string
+    {
+        $names = $genres
+            ->map(fn (array $genre) => trim((string) ($genre['description'] ?? '')))
+            ->filter()
+            ->take(2)
+            ->values();
+
+        return $names->isEmpty() ? null : $names->implode(' / ');
+    }
+
+    private function isAdultStoreTitle(string $title): bool
+    {
+        return preg_match('/hentai|adult|nsfw|futa|milf|ntr|sex|succubus|erotic|nude/i', $title) === 1;
     }
 
     private function personaState(int $state): string

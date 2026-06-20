@@ -6,12 +6,20 @@ use App\Http\Controllers\Controller;
 use App\Jobs\DispatchSupplierOrder;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\ResellerPartner;
+use App\Models\ResellerWalletTransaction;
 use App\Models\SupplierOrder;
 use App\Models\Tournament;
+use App\Models\User;
 use App\Services\Payments\PaymentManager;
 use App\Services\AstralNotificationService;
+use App\Services\Discord\DiscordNotificationService;
+use App\Services\Reseller\ResellerWalletService;
+use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Throwable;
 
 class PaymentController extends Controller
 {
@@ -32,6 +40,7 @@ class PaymentController extends Controller
         $this->storeOrderCustomer($order, $data['customer']);
         $gateway = new PaymentManager($data['provider']);
         $checkout = $gateway->initiate($this->buildPaymentPayload($order, $data));
+        abort_unless(! empty($checkout['checkout_url']) && ! empty($checkout['reference']), 422, 'Le prestataire n’a pas renvoyé de lien de paiement.');
 
         $payment = Payment::create([
             'user_id' => $request->user()->id,
@@ -63,9 +72,18 @@ class PaymentController extends Controller
         abort_unless($order->status === 'pending_payment', 422, 'Commande deja traitee.');
 
         $this->storeOrderCustomer($order, $data['customer']);
+        $user = $this->resolveUserFromCustomer($data['customer']);
+
+        if ($user && ! $order->user_id) {
+            $order->update(['user_id' => $user->id]);
+            $order->refresh();
+        }
+
         $checkout = (new PaymentManager('moneroo'))->initiate($this->buildPaymentPayload($order, ['provider' => 'moneroo', ...$data]));
+        abort_unless(! empty($checkout['checkout_url']) && ! empty($checkout['reference']), 422, 'Moneroo n’a pas renvoyé de lien de paiement.');
 
         $payment = Payment::create([
+            'user_id' => $user?->id,
             'order_id' => $order->id,
             'provider' => 'moneroo',
             'reference' => $checkout['reference'],
@@ -126,9 +144,9 @@ class PaymentController extends Controller
     private function buildPaymentPayload(Order $order, array $data): array
     {
         $payload = [
-            'amount' => (int) round($order->amount),
+            'amount' => $this->monerooAmount($order),
             'currency' => $order->currency,
-            'description' => 'Payment for NEXY order #'.$order->id,
+            'description' => 'Paiement commande Astral4Gamer #'.$order->id,
             'return_url' => config('services.payments.moneroo.return_url').'?order_id='.$order->id,
             'customer' => $data['customer'],
             'metadata' => [
@@ -143,6 +161,18 @@ class PaymentController extends Controller
         }
 
         return $payload;
+    }
+
+    private function monerooAmount(Order $order): int|float
+    {
+        $amount = (float) $order->amount;
+        $zeroDecimalCurrencies = ['XOF', 'XAF', 'GNF', 'RWF', 'BIF', 'UGX', 'JPY'];
+
+        if (in_array(strtoupper((string) $order->currency), $zeroDecimalCurrencies, true)) {
+            return (int) round($amount);
+        }
+
+        return round($amount, 2);
     }
 
     private function storeOrderCustomer(Order $order, array $customer): void
@@ -169,6 +199,25 @@ class PaymentController extends Controller
                 'payload' => array_merge($payment->payload ?? [], ['verification' => $event]),
             ]);
 
+            $resellerPartnerId = data_get($payment->payload, 'metadata.reseller_partner_id');
+            $resellerReference = data_get($payment->payload, 'metadata.reference') ?: $payment->reference;
+
+            if (! $order && $resellerPartnerId && $status === 'success') {
+                $partner = ResellerPartner::find($resellerPartnerId);
+
+                if ($partner && ! ResellerWalletTransaction::where('payment_id', $payment->id)->exists()) {
+                    app(ResellerWalletService::class)->credit(
+                        $partner,
+                        (float) $payment->amount,
+                        (string) $resellerReference,
+                        $payment,
+                        ['provider' => $payment->provider, 'payment_reference' => $payment->reference]
+                    );
+                }
+
+                return ['order_id' => null, 'user_id' => null, 'amount' => $payment->amount, 'currency' => $payment->currency];
+            }
+
             $tournamentId = data_get($payment->payload, 'metadata.tournament_id');
 
             if (! $order && $tournamentId && $status === 'success') {
@@ -189,7 +238,18 @@ class PaymentController extends Controller
             }
 
             if ($order->status === 'paid') {
-                return null;
+                $metadata = $order->metadata ?? [];
+                $shouldFulfillSupplier = empty($metadata['manual_fulfillment'])
+                    && ! SupplierOrder::where('order_id', $order->id)->exists();
+
+                return [
+                    'order_id' => $order->id,
+                    'user_id' => $payment->user_id ?: $order->user_id,
+                    'amount' => $payment->amount,
+                    'currency' => $payment->currency,
+                    'manual_fulfillment' => ! empty($metadata['manual_fulfillment']),
+                    'should_fulfill_supplier' => $shouldFulfillSupplier,
+                ];
             }
 
             if ((float) ($event['amount'] ?? 0) < (float) $order->amount) {
@@ -202,14 +262,35 @@ class PaymentController extends Controller
                 return null;
             }
 
-            $order->update(['status' => 'paid']);
+            $metadata = $order->metadata ?? [];
+            $shouldFulfillSupplier = empty($metadata['manual_fulfillment'])
+                && ! SupplierOrder::where('order_id', $order->id)->exists();
 
-            if (! SupplierOrder::where('order_id', $order->id)->exists()) {
-                DispatchSupplierOrder::dispatch($order);
+            if (! empty($metadata['manual_fulfillment'])) {
+                $metadata['fulfillment_status'] = 'awaiting_delivery';
+                $metadata['paid_at'] = now()->toIso8601String();
             }
 
-            return ['order_id' => $order->id, 'user_id' => $payment->user_id ?: $order->user_id, 'amount' => $payment->amount, 'currency' => $payment->currency];
+            if ($shouldFulfillSupplier) {
+                $metadata['fulfillment_status'] = 'pending_supplier';
+                $metadata['paid_at'] = now()->toIso8601String();
+            }
+
+            $order->update(['status' => 'paid', 'metadata' => $metadata]);
+
+            return [
+                'order_id' => $order->id,
+                'user_id' => $payment->user_id ?: $order->user_id,
+                'amount' => $payment->amount,
+                'currency' => $payment->currency,
+                'manual_fulfillment' => ! empty($metadata['manual_fulfillment']),
+                'should_fulfill_supplier' => $shouldFulfillSupplier,
+            ];
         });
+
+        if ($notificationPayload && ! empty($notificationPayload['should_fulfill_supplier']) && $notificationPayload['order_id']) {
+            $this->fulfillSupplierOrderNow((int) $notificationPayload['order_id']);
+        }
 
         if ($notificationPayload && $notificationPayload['user_id']) {
             $user = \App\Models\User::find($notificationPayload['user_id']);
@@ -229,5 +310,53 @@ class PaymentController extends Controller
                 ]);
             }
         }
+
+        if ($notificationPayload && ! empty($notificationPayload['manual_fulfillment']) && $notificationPayload['order_id']) {
+            $order = Order::find($notificationPayload['order_id']);
+
+            if ($order) {
+                app(DiscordNotificationService::class)->manualFulfillmentPaid($order);
+            }
+        }
+    }
+
+    private function fulfillSupplierOrderNow(int $orderId): void
+    {
+        $order = Order::find($orderId);
+
+        if (! $order || ! empty($order->metadata['manual_fulfillment'])) {
+            return;
+        }
+
+        if (SupplierOrder::where('order_id', $order->id)->exists()) {
+            return;
+        }
+
+        try {
+            app(BusDispatcher::class)->dispatchSync(new DispatchSupplierOrder($order));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            $metadata = $order->metadata ?? [];
+            $metadata['fulfillment_status'] = 'supplier_dispatch_failed';
+            $metadata['fulfillment_error'] = Str::limit($exception->getMessage(), 500);
+            $metadata['fulfillment_failed_at'] = now()->toIso8601String();
+            $order->update(['metadata' => $metadata]);
+
+            DispatchSupplierOrder::dispatch($order)->delay(now()->addMinute());
+        }
+    }
+
+    private function resolveUserFromCustomer(array $customer): ?User
+    {
+        $email = trim((string) ($customer['email'] ?? ''));
+
+        if ($email === '') {
+            return null;
+        }
+
+        return User::query()
+            ->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])
+            ->first();
     }
 }

@@ -287,7 +287,7 @@ class Item4GamerCatalogSyncService
                 'amount',
                 'cost',
             ])),
-            'currency' => Arr::get($remoteProduct, 'currency') ?? Arr::get($remoteProduct, 'currency_code') ?? 'XOF',
+            'currency' => Arr::get($remoteProduct, 'currency') ?? Arr::get($remoteProduct, 'currency_code') ?? 'USD',
             'image_url' => $this->normalizeImage($image),
             'permalink' => Arr::get($remoteProduct, 'permalink') ?? Arr::get($remoteProduct, 'url'),
             'description' => Arr::get($remoteProduct, 'description') ?? Arr::get($remoteProduct, 'short_description'),

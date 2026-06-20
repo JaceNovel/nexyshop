@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   Activity, BarChart3, Bell, BookOpen, CalendarDays, ChevronDown, Gamepad2,
   Home, KeyRound, LayoutDashboard, LogOut, Mail, Menu, Package, Percent,
@@ -9,16 +10,17 @@ import {
 } from "lucide-react";
 
 const groups = [
-  { title: "", items: [["Tableau de bord", "/admin", LayoutDashboard]] },
+  { title: "", items: [["Tableau de bord", "/admin", LayoutDashboard], ["Demandes partenaires", "/admin/resellers", KeyRound]] },
   { title: "Utilisateurs", items: [["Utilisateurs", "/admin/users", Users], ["Joueurs", "/admin/players", Gamepad2], ["Roles & permissions", "/admin/roles", ShieldCheck]] },
   { title: "Tournois", items: [["Tournois", "/admin/tournaments", Trophy], ["Participations", "/admin/participations", Users], ["Matchs", "/admin/matches", Gamepad2], ["Classements", "/admin/rankings", BarChart3], ["Calendrier", "/admin/calendar", CalendarDays]] },
-  { title: "Boutique", items: [["Produits", "/admin/products", Package], ["Commandes", "/admin/orders", ShoppingCart], ["Transactions", "/admin/transactions", Wallet], ["Codes promo", "/admin/redeem-codes", Percent]] },
+  { title: "Boutique", items: [["Produits", "/admin/products", Package], ["Commandes", "/admin/orders", ShoppingCart], ["Transactions", "/admin/transactions", Wallet], ["Revendeurs API", "/admin/resellers", KeyRound], ["Codes promo", "/admin/redeem-codes", Percent]] },
   { title: "Contenu", items: [["Actualites", "/admin/blog", BookOpen], ["Pages", "/admin/pages", BookOpen], ["Video & lives", "/admin/video", Activity], ["Bannieres", "/admin/banners", BarChart3]] },
   { title: "Parametres", items: [["Parametres", "/admin/settings", Settings], ["API & integrations", "/admin/integrations", KeyRound], ["Journaux", "/admin/logs", Activity]] }
 ] as const;
 
 export function AdminShell({ children, title, subtitle }: { children: ReactNode; title: string; subtitle: string }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!localStorage.getItem("nexy_sanctum_token")) window.location.href = "/admin/login";
@@ -45,7 +47,7 @@ export function AdminShell({ children, title, subtitle }: { children: ReactNode;
           {groups.map((group) => <div key={group.title || "dashboard"}>
             {group.title ? <p className="mb-2 px-3 text-[10px] uppercase tracking-[0.18em] text-slate-500">{group.title}</p> : null}
             <div className="space-y-1">{group.items.map(([label, href, Icon]) => {
-              const active = typeof window !== "undefined" && window.location.pathname === href;
+              const active = pathname === href;
               return <a key={href} href={href} className={`flex h-10 items-center gap-3 rounded-lg px-3 text-[13px] transition ${active ? "bg-violet-600/45 text-white" : "text-slate-300 hover:bg-white/[0.05] hover:text-white"}`}><Icon className="h-4 w-4" />{label}</a>;
             })}</div>
           </div>)}
@@ -59,7 +61,7 @@ export function AdminShell({ children, title, subtitle }: { children: ReactNode;
             <div className="min-w-0"><h1 className="truncate text-xl font-semibold sm:text-2xl">{title}</h1><p className="mt-1 truncate text-xs text-slate-400 sm:text-sm">{subtitle}</p></div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="relative grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[0.04]"><Bell className="h-4 w-4" /><span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-fuchsia-500 px-1 text-[10px]">5</span></button>
+            <button title="Notifications" className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[0.04]"><Bell className="h-4 w-4" /></button>
             <button className="hidden h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[0.04] sm:grid"><Mail className="h-4 w-4" /></button>
             <button onClick={logout} className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-left">
               <span className="grid h-7 w-7 place-items-center rounded-full border border-violet-400/60 bg-violet-500/20 text-xs">A</span>

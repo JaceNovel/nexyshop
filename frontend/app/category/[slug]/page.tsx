@@ -4,23 +4,12 @@ import { ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
 import { SiteHeader } from "@/components/site-header";
+import { useLanguage } from "@/components/language-provider";
+import { catalogFallbackImage, resolveCatalogImage } from "@/lib/catalog-images";
 import { getCatalogProducts, type CatalogProduct } from "@/lib/api";
 
-const fallbackImages = {
-  neutral: "/icon.svg",
-  apple: "https://cdn.simpleicons.org/apple/111111",
-  amazon: "https://cdn.simpleicons.org/amazon/FF9900",
-  discord: "https://cdn.simpleicons.org/discord/5865F2",
-  googlePlay: "https://cdn.simpleicons.org/googleplay/34A853",
-  netflix: "https://cdn.simpleicons.org/netflix/E50914",
-  nintendo: "https://cdn.simpleicons.org/nintendo/E60012",
-  playstation: "https://cdn.simpleicons.org/playstation/003791",
-  razer: "https://cdn.simpleicons.org/razer/00FF00",
-  steam: "https://cdn.simpleicons.org/steam/171A21",
-  xbox: "https://cdn.simpleicons.org/xbox/107C10"
-};
-
 const categoryConfig: Record<string, { title: string; type: string; description: string }> = {
+  "catalogue": { title: "Catalogue", type: "", description: "Recherche globale dans tout le catalogue Astral4Gamer." },
   "top-up": { title: "Top Up", type: "top-up", description: "Recharges de jeux et crédits digitaux disponibles sur Astral4Gamer." },
   "game-credits": { title: "Game Credits", type: "top-up", description: "Recharges de jeux et crédits digitaux disponibles sur Astral4Gamer." },
   "carte-cadeau": { title: "Gift Cards", type: "gift-card", description: "Cartes cadeaux disponibles avec livraison rapide." },
@@ -37,31 +26,11 @@ function identity(product: Pick<CatalogProduct, "name" | "game" | "category">) {
 }
 
 function fallbackImage(product: CatalogProduct) {
-  const text = identity(product);
-
-  if (text.includes("apple") || text.includes("itunes")) return fallbackImages.apple;
-  if (text.includes("amazon")) return fallbackImages.amazon;
-  if (text.includes("discord") || text.includes("nitro")) return fallbackImages.discord;
-  if (text.includes("google play")) return fallbackImages.googlePlay;
-  if (text.includes("netflix")) return fallbackImages.netflix;
-  if (text.includes("nintendo")) return fallbackImages.nintendo;
-  if (text.includes("playstation") || text.includes("psn")) return fallbackImages.playstation;
-  if (text.includes("razer")) return fallbackImages.razer;
-  if (text.includes("steam")) return fallbackImages.steam;
-  if (text.includes("xbox")) return fallbackImages.xbox;
-
-  return fallbackImages.neutral;
+  return catalogFallbackImage(product);
 }
 
 function productImage(product: CatalogProduct) {
-  const image = product.image_url?.trim();
-  const isPubgProduct = identity(product).includes("pubg");
-
-  if (image && (!image.toLowerCase().includes("pubg") || isPubgProduct)) {
-    return image;
-  }
-
-  return fallbackImage(product);
+  return resolveCatalogImage(product);
 }
 
 function preventBrokenImage(event: SyntheticEvent<HTMLImageElement>, fallback: string) {
@@ -75,34 +44,72 @@ function preventBrokenImage(event: SyntheticEvent<HTMLImageElement>, fallback: s
   image.src = fallback;
 }
 
-function productPrice(product: CatalogProduct) {
+function productPrice(
+  product: CatalogProduct,
+  language: "fr" | "en",
+  formatMoney: (value: number, sourceCurrency?: string, options?: { unavailableLabel?: string; prefix?: string }) => string
+) {
   const variationPrices = (product.variations ?? [])
     .map((variation) => Number(variation.price))
     .filter((price) => price > 0);
   const price = Number(product.price) > 0 ? Number(product.price) : Math.min(...variationPrices);
 
   if (!Number.isFinite(price) || price <= 0) {
-    return "Prix indisponible";
+    return language === "fr" ? "Prix indisponible" : "Price unavailable";
   }
 
   const hasRange = variationPrices.length > 1 || Boolean(product.price_range?.min && product.price_range?.max && product.price_range.min !== product.price_range.max);
 
-  return `${hasRange ? "Dès " : ""}${new Intl.NumberFormat("fr-FR").format(price)} ${product.currency}`;
+  return formatMoney(price, product.currency, {
+    prefix: hasRange ? (language === "fr" ? "Dès " : "From ") : "",
+    unavailableLabel: language === "fr" ? "Prix indisponible" : "Price unavailable"
+  });
 }
 
-function numericPrice(product: CatalogProduct) {
+function numericPrice(product: CatalogProduct, convertMoney: (value: number, sourceCurrency?: string) => number) {
   const prices = [
-    Number(product.price),
-    ...(product.variations ?? []).map((variation) => Number(variation.price))
+    convertMoney(Number(product.price), product.currency),
+    ...(product.variations ?? []).map((variation) => convertMoney(Number(variation.price), variation.currency ?? product.currency))
   ].filter((price) => price > 0);
 
   return prices.length ? Math.min(...prices) : Number.MAX_SAFE_INTEGER;
 }
 
 export default function CategoryPage() {
+  const { language, formatMoney, convertMoney } = useLanguage();
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
-  const config = categoryConfig[params.slug] ?? { title: "Catalogue", type: params.slug, description: "Produits disponibles sur Astral4Gamer." };
+  const fallbackConfig = categoryConfig[params.slug] ?? { title: "Catalogue", type: params.slug, description: "Produits disponibles sur Astral4Gamer." };
+  const config = translateCategoryConfig(params.slug, language, fallbackConfig);
+  const labels = language === "fr" ? {
+    home: "Accueil",
+    shop: "Boutique",
+    search: "Rechercher un produit",
+    sort: "Trier par :",
+    popular: "Popularité",
+    newest: "Plus récent",
+    cheaper: "Moins cher",
+    pricier: "Plus cher",
+    products: "produits",
+    empty: "Aucun produit trouvé.",
+    emptyHint: "Essaie une autre recherche ou une autre catégorie.",
+    previous: "Précédent",
+    next: "Page suivante"
+  } : {
+    home: "Home",
+    shop: "Shop",
+    search: "Search for a product",
+    sort: "Sort by:",
+    popular: "Popularity",
+    newest: "Newest",
+    cheaper: "Lowest price",
+    pricier: "Highest price",
+    products: "products",
+    empty: "No product found.",
+    emptyHint: "Try another search or category.",
+    previous: "Previous",
+    next: "Next page"
+  };
   const initialQuery = searchParams.get("q") ?? "";
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [query, setQuery] = useState(initialQuery);
@@ -121,7 +128,7 @@ export default function CategoryPage() {
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      getCatalogProducts(productsPerPage, { category: config.type, q: query.trim() || undefined, page })
+      getCatalogProducts(productsPerPage, { category: config.type || undefined, q: query.trim() || undefined, page })
         .then((payload) => {
           if (!cancelled) {
             setProducts(payload.data);
@@ -151,28 +158,28 @@ export default function CategoryPage() {
     const items = [...products];
 
     if (sort === "price_asc") {
-      items.sort((a, b) => numericPrice(a) - numericPrice(b));
+      items.sort((a, b) => numericPrice(a, convertMoney) - numericPrice(b, convertMoney));
     } else if (sort === "price_desc") {
-      items.sort((a, b) => numericPrice(b) - numericPrice(a));
+      items.sort((a, b) => numericPrice(b, convertMoney) - numericPrice(a, convertMoney));
     } else if (sort === "newest") {
       items.sort((a, b) => b.id - a.id);
     }
 
     return items;
-  }, [products, sort]);
+  }, [convertMoney, products, sort]);
 
   const sortOptions: Array<{ key: SortKey; label: string }> = [
-    { key: "popular", label: "Popularité" },
-    { key: "newest", label: "Plus récent" },
-    { key: "price_asc", label: "Moins cher" },
-    { key: "price_desc", label: "Plus cher" }
+    { key: "popular", label: labels.popular },
+    { key: "newest", label: labels.newest },
+    { key: "price_asc", label: labels.cheaper },
+    { key: "price_desc", label: labels.pricier }
   ];
 
   return (
     <main className="min-h-screen bg-white text-black">
       <SiteHeader />
       <section className="mx-auto max-w-[1400px] px-3 py-5 sm:px-5 md:px-6 md:py-10">
-        <p className="text-xs text-[#697081] md:text-sm">Accueil / Boutique / {config.title}</p>
+        <p className="text-xs text-[#697081] md:text-sm">{labels.home} / {labels.shop} / {config.title}</p>
         <div className="mt-3 flex flex-col gap-3 md:mt-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-xl font-black md:text-3xl">{config.title}</h1>
@@ -187,13 +194,13 @@ export default function CategoryPage() {
                 setPage(1);
               }}
               className="w-full bg-transparent text-sm outline-none"
-              placeholder="Rechercher un produit"
+              placeholder={labels.search}
             />
           </label>
         </div>
 
         <div className="mt-4 flex h-10 items-center gap-2 overflow-x-auto rounded-lg bg-[#f4f4f5] px-3 text-xs md:mt-6 md:h-12 md:gap-4 md:px-5 md:text-sm">
-          <b className="shrink-0">Trier par :</b>
+          <b className="shrink-0">{labels.sort}</b>
           {sortOptions.map((option) => (
             <button
               key={option.key}
@@ -203,7 +210,7 @@ export default function CategoryPage() {
               {option.label}
             </button>
           ))}
-          <span className="ml-auto hidden shrink-0 text-xs font-bold text-[#697081] md:block">{total} produits</span>
+          <span className="ml-auto hidden shrink-0 text-xs font-bold text-[#697081] md:block">{total} {labels.products}</span>
         </div>
 
         {loading ? (
@@ -226,8 +233,8 @@ export default function CategoryPage() {
                   <div className="relative aspect-square overflow-hidden rounded-md bg-[#f8fafc] md:rounded-lg">
                     <img src={productImage(product)} alt={product.name} onError={(event) => preventBrokenImage(event, fallback)} className="h-full w-full object-contain p-2" />
                   </div>
-                  <h2 className="mt-2 line-clamp-2 min-h-[32px] text-[11px] font-black leading-4 text-[#004bd6] md:mt-3 md:min-h-[44px] md:text-sm md:leading-5">{product.name}</h2>
-                  <p className="mt-1 truncate text-right text-[10px] font-medium md:mt-2 md:text-sm">{productPrice(product)}</p>
+                  <h2 className="mt-2 line-clamp-2 min-h-[32px] break-words text-[11px] font-black leading-4 text-[#004bd6] md:mt-3 md:min-h-[44px] md:text-sm md:leading-5">{product.name}</h2>
+                  <p className="mt-1 truncate text-right text-[10px] font-medium md:mt-2 md:text-sm">{productPrice(product, language, formatMoney)}</p>
                 </a>
               );
             })}
@@ -236,8 +243,8 @@ export default function CategoryPage() {
           <div className="mt-8 grid min-h-48 place-items-center rounded-lg border border-dashed border-[#d0d5dd] bg-[#fbfbfd] p-6 text-center">
             <div>
               <Loader2 className="mx-auto mb-3 hidden h-6 w-6 animate-spin text-[#0b55d9]" />
-              <p className="text-sm font-black text-[#111827]">Aucun produit trouvé.</p>
-              <p className="mt-1 text-xs font-semibold text-[#697081]">Essaie une autre recherche ou une autre catégorie.</p>
+              <p className="text-sm font-black text-[#111827]">{labels.empty}</p>
+              <p className="mt-1 text-xs font-semibold text-[#697081]">{labels.emptyHint}</p>
             </div>
           </div>
         )}
@@ -249,7 +256,7 @@ export default function CategoryPage() {
             className="inline-flex h-10 items-center gap-1 rounded-lg border border-[#e5e7eb] px-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-45"
           >
             <ChevronLeft className="h-4 w-4" />
-            Précédent
+            {labels.previous}
           </button>
           <span className="grid h-10 min-w-10 place-items-center rounded-lg bg-[#0b55d9] px-3 text-sm font-black text-white">{page}</span>
           <button
@@ -257,11 +264,47 @@ export default function CategoryPage() {
             disabled={page >= lastPage || loading}
             className="inline-flex h-10 items-center gap-1 rounded-lg border border-[#e5e7eb] px-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-45"
           >
-            Page suivante
+            {labels.next}
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       </section>
     </main>
   );
+}
+
+function translateCategoryConfig(slug: string, language: "fr" | "en", fallback: { title: string; type: string; description: string }) {
+  const translations: Record<string, { fr: { title: string; description: string }; en: { title: string; description: string } }> = {
+    catalogue: {
+      fr: { title: "Catalogue", description: "Recherche globale dans tout le catalogue Astral4Gamer." },
+      en: { title: "Catalog", description: "Global search across the full Astral4Gamer catalog." }
+    },
+    "top-up": {
+      fr: { title: "Top Up", description: "Recharges de jeux et crédits digitaux disponibles sur Astral4Gamer." },
+      en: { title: "Top Up", description: "Game top-ups and digital credits available on Astral4Gamer." }
+    },
+    "game-credits": {
+      fr: { title: "Crédits de jeu", description: "Recharges de jeux et crédits digitaux disponibles sur Astral4Gamer." },
+      en: { title: "Game Credits", description: "Game top-ups and digital credits available on Astral4Gamer." }
+    },
+    "carte-cadeau": {
+      fr: { title: "Cartes cadeaux", description: "Cartes cadeaux disponibles avec livraison rapide." },
+      en: { title: "Gift Cards", description: "Gift cards available with fast delivery." }
+    },
+    "gift-cards": {
+      fr: { title: "Cartes cadeaux", description: "Cartes cadeaux disponibles avec livraison rapide." },
+      en: { title: "Gift Cards", description: "Gift cards available with fast delivery." }
+    },
+    "game-keys": {
+      fr: { title: "Clés de jeux", description: "Clés de jeux disponibles sur Astral4Gamer." },
+      en: { title: "Game Keys", description: "Game keys available on Astral4Gamer." }
+    },
+    "manual-services": {
+      fr: { title: "Services manuels", description: "Services digitaux disponibles sur Astral4Gamer." },
+      en: { title: "Manual Services", description: "Digital services available on Astral4Gamer." }
+    }
+  };
+
+  const translated = translations[slug]?.[language];
+  return translated ? { ...fallback, ...translated } : fallback;
 }

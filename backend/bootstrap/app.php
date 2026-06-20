@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AuthenticateReseller;
 use App\Http\Middleware\VerifySignedWebhook;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
@@ -18,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'signed.webhook' => VerifySignedWebhook::class,
+            'auth.reseller' => AuthenticateReseller::class,
         ]);
     })
     ->withSchedule(function (Schedule $schedule) {

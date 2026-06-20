@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.astral4gamer.com";
 export const API_BASE_URL = API_URL;
 const FREE_FIRE_PROFILE_CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const PUBG_PROFILE_CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -108,7 +108,7 @@ export type TournamentTeam = {
 export async function getTournaments() {
   const response = await fetch(`${API_URL}/api/tournaments`, {
     headers: { Accept: "application/json" },
-    next: { revalidate: 60 }
+    cache: "no-store"
   });
 
   if (!response.ok) {
@@ -133,6 +133,7 @@ export async function getTournament(id: string | number) {
 
 export type PartnershipRequestPayload = {
   name: string;
+  company_name?: string;
   email: string;
   discord?: string;
   country?: string;
@@ -537,11 +538,16 @@ export async function createGuestOrder(payload: { product_id: number; variation_
     body: JSON.stringify(payload)
   });
 
+  const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    throw new Error("Commande impossible pour le moment");
+    const validation = data?.errors && typeof data.errors === "object"
+      ? Object.values(data.errors).flat().find((value) => typeof value === "string")
+      : null;
+    throw new Error(validation || data?.message || "Commande impossible pour le moment");
   }
 
-  return response.json();
+  return data;
 }
 
 export async function initiateMonerooPayment(payload: {
@@ -556,11 +562,20 @@ export async function initiateMonerooPayment(payload: {
     body: JSON.stringify(payload)
   });
 
+  const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    throw new Error("Initialisation paiement impossible");
+    const validation = data?.errors && typeof data.errors === "object"
+      ? Object.values(data.errors).flat().find((value) => typeof value === "string")
+      : null;
+    throw new Error(validation || data?.message || "Initialisation paiement impossible");
   }
 
-  return response.json() as Promise<{ payment: { id: number; reference: string; status: string }; checkout_url: string }>;
+  if (!data?.checkout_url || typeof data.checkout_url !== "string") {
+    throw new Error("Le prestataire de paiement n'a pas renvoyé de lien de paiement.");
+  }
+
+  return data as { payment: { id: number; reference: string; status: string }; checkout_url: string };
 }
 
 export async function verifyGameUid(game: string, uid: string) {

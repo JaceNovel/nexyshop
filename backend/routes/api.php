@@ -5,6 +5,9 @@ use App\Http\Controllers\Api\AdminAuthController;
 use App\Http\Controllers\Api\AdminBlogPostController;
 use App\Http\Controllers\Api\AdminIntegrationController;
 use App\Http\Controllers\Api\AdminNotificationController;
+use App\Http\Controllers\Api\AdminOrderController;
+use App\Http\Controllers\Api\AdminProductController;
+use App\Http\Controllers\Api\AdminResellerController;
 use App\Http\Controllers\Api\AdminVideoController;
 use App\Http\Controllers\Api\BlogPostController;
 use App\Http\Controllers\Api\CommunityController;
@@ -24,6 +27,8 @@ use App\Http\Controllers\Api\PlayerController;
 use App\Http\Controllers\Api\PublicProfileController;
 use App\Http\Controllers\Api\PubgController;
 use App\Http\Controllers\Api\ReplayController;
+use App\Http\Controllers\Api\ResellerApiController;
+use App\Http\Controllers\Api\ResellerAuthController;
 use App\Http\Controllers\Api\ShopController;
 use App\Http\Controllers\Api\SteamController;
 use App\Http\Controllers\Api\TournamentController;
@@ -42,8 +47,11 @@ Route::middleware(['api', 'throttle:api'])->group(function () {
     Route::get('/products/categories', [ShopController::class, 'categories']);
     Route::get('/products/{product}', [ShopController::class, 'product']);
     Route::post('/orders/guest', [ShopController::class, 'guestOrder']);
+    Route::get('/orders/{order}/delivery', [ShopController::class, 'orderDelivery']);
     Route::post('/support/order-requests', [OrderSupportController::class, 'store'])->middleware('throttle:uid');
     Route::post('/partnership-requests', [PartnershipController::class, 'store'])->middleware('throttle:uid');
+    Route::get('/bot/partnership-approvals', [PartnershipController::class, 'approvedForBot'])->middleware('throttle:api');
+    Route::post('/bot/partnership-approvals/{partnershipRequest}/notified', [PartnershipController::class, 'markBotNotified'])->middleware('throttle:api');
     Route::post('/payments/moneroo/initiate', [PaymentController::class, 'initiateGuest']);
     Route::get('/payments/moneroo/return', [PaymentController::class, 'monerooReturn']);
     Route::post('/payments/webhook/{provider}', [PaymentController::class, 'webhook'])->middleware('signed.webhook');
@@ -79,6 +87,7 @@ Route::middleware(['api', 'throttle:api'])->group(function () {
     Route::get('/blog-posts', [BlogPostController::class, 'index']);
     Route::get('/blog-posts/{slug}', [BlogPostController::class, 'show']);
     Route::post('/admin/login', [AdminAuthController::class, 'login'])->middleware('throttle:uid');
+    Route::post('/reseller/panel/login', [ResellerAuthController::class, 'login'])->middleware('throttle:uid');
     Route::get('/notifications/feed', [NotificationController::class, 'feed']);
     Route::get('/diamond-duels', [DiamondDuelController::class, 'index']);
     Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect']);
@@ -90,6 +99,21 @@ Route::middleware(['api', 'throttle:api'])->group(function () {
     Route::get('/steam/achievements', [SteamController::class, 'achievements']);
     Route::get('/steam/player-achievements', [SteamController::class, 'playerAchievements']);
     Route::get('/steam/tf2/items', [SteamController::class, 'tf2Items']);
+});
+
+Route::middleware(['auth.reseller', 'throttle:api'])->prefix('reseller')->group(function () {
+    Route::get('/panel/me', [ResellerAuthController::class, 'me']);
+    Route::get('/panel/overview', [ResellerApiController::class, 'panelOverview']);
+    Route::post('/panel/topup', [ResellerApiController::class, 'topup']);
+    Route::post('/panel/api-keys/live', [ResellerApiController::class, 'regenerateLiveKey']);
+    Route::get('/panel/orders', [ResellerApiController::class, 'orders']);
+    Route::get('/panel/transactions', [ResellerApiController::class, 'transactions']);
+    Route::get('/v1/categories', [ResellerApiController::class, 'categories']);
+    Route::get('/v1/products', [ResellerApiController::class, 'products']);
+    Route::get('/v1/products/{product}', [ResellerApiController::class, 'product']);
+    Route::get('/v1/get-balance', [ResellerApiController::class, 'balance']);
+    Route::post('/v1/order/add-order', [ResellerApiController::class, 'addOrder']);
+    Route::get('/v1/order/get-order', [ResellerApiController::class, 'getOrder']);
 });
 
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
@@ -134,6 +158,17 @@ Route::middleware(['auth:sanctum', 'can:admin'])->prefix('admin')->group(functio
     Route::get('/suppliers/fazercards/balance', [ShopController::class, 'fazerCardsBalance']);
     Route::get('/suppliers/fazercards/orders', [ShopController::class, 'fazerCardsOrder']);
     Route::get('/analytics', [AdminController::class, 'analytics']);
+    Route::get('/orders/manual', [AdminOrderController::class, 'manualOrders']);
+    Route::patch('/orders/{order}/manual-status', [AdminOrderController::class, 'updateManualStatus']);
+    Route::get('/products/manage', [AdminProductController::class, 'index']);
+    Route::patch('/products/{product}', [AdminProductController::class, 'update']);
+    Route::get('/resellers', [AdminResellerController::class, 'index']);
+    Route::get('/resellers/requests', [AdminResellerController::class, 'requests']);
+    Route::post('/resellers/requests/{partnershipRequest}/approve', [AdminResellerController::class, 'approve']);
+    Route::patch('/resellers/{partner}', [AdminResellerController::class, 'update']);
+    Route::post('/resellers/{partner}/suspend', [AdminResellerController::class, 'suspend']);
+    Route::post('/resellers/{partner}/activate', [AdminResellerController::class, 'activate']);
+    Route::get('/sections/{section}', [AdminController::class, 'section']);
     Route::get('/logs', [AdminController::class, 'logs']);
     Route::post('/notifications/promotion', [AdminNotificationController::class, 'promotion']);
     Route::get('/integrations/google', [AdminIntegrationController::class, 'google']);

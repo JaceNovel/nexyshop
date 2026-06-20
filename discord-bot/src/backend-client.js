@@ -49,6 +49,35 @@ export async function lookupPlayer({ game, identifier, region, platform }) {
   throw new LookupError("GAME_UNAVAILABLE", "Ce jeu n’est pas encore disponible sur le bot Discord.");
 }
 
+export async function submitPartnershipRequest(payload) {
+  const apiBaseUrl = normalizedApiBaseUrl();
+  const headers = botHeaders();
+
+  return postJson(`${apiBaseUrl}/api/partnership-requests`, payload, headers);
+}
+
+export async function fetchApprovedPartnerships() {
+  const apiBaseUrl = normalizedApiBaseUrl();
+  const headers = botHeaders();
+
+  return getJson(`${apiBaseUrl}/api/bot/partnership-approvals`, headers);
+}
+
+export async function markPartnershipNotified(id) {
+  const apiBaseUrl = normalizedApiBaseUrl();
+  const headers = botHeaders();
+
+  return postJson(`${apiBaseUrl}/api/bot/partnership-approvals/${id}/notified`, {}, headers);
+}
+
+export async function fetchCatalogProduct(id) {
+  const apiBaseUrl = normalizedApiBaseUrl();
+
+  return getJson(`${apiBaseUrl}/api/products/${encodeURIComponent(id)}`, {
+    Accept: "application/json"
+  });
+}
+
 async function postJson(url, body, headers) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -78,6 +107,50 @@ async function postJson(url, body, headers) {
   }
 
   return payload;
+}
+
+async function getJson(url, headers) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+  let response;
+
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new LookupError("BACKEND_TIMEOUT", "Le backend prend trop de temps.", { retryable: true, endpoint: url });
+    }
+
+    throw new LookupError("BACKEND_UNAVAILABLE", "Le backend est indisponible.", { retryable: true, endpoint: url });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw classifyBackendError(response.status, payload, url);
+  }
+
+  return payload;
+}
+
+function botHeaders() {
+  const headers = {
+    Accept: "application/json",
+    "Content-Type": "application/json"
+  };
+  const backendToken = process.env.ASTRAL_BOT_BACKEND_TOKEN?.trim();
+
+  if (backendToken) {
+    headers["X-Astral-Bot-Token"] = backendToken;
+  }
+
+  return headers;
 }
 
 function classifyBackendError(status, payload, endpoint) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Gift, RefreshCw, ShieldCheck } from "lucide-react";
-import { SiteHeader } from "@/components/site-header";
+import { AdminShell } from "@/components/admin/admin-shell";
 
 export default function AdminRedeemCodesPage() {
   const [enabled, setEnabled] = useState(false);
@@ -65,32 +65,29 @@ export default function AdminRedeemCodesPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-white text-[#111827]">
-      <SiteHeader />
-      <section className="mx-auto max-w-[980px] px-6 py-8">
-        <p className="text-xs font-black uppercase text-[#e52b2f]">Admin</p>
-        <h1 className="mt-2 text-4xl font-black tracking-normal">Redeem codes Free Fire</h1>
-        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#667085]">
+    <AdminShell title="Codes promo" subtitle="Publication et disponibilite des redeem codes Free Fire.">
+      <section className="max-w-[980px]">
+        <p className="max-w-2xl text-sm leading-6 text-slate-400">
           Appuie une fois par jour pour récupérer les redeem codes trouvés et les afficher pendant 24H dans la recherche. Les visiteurs devront taper <b>code gratuit</b>.
         </p>
 
-        <section className="mt-8 rounded-lg border border-[#e5e7eb] bg-[#fbfbff] p-6 shadow-[0_14px_38px_rgba(16,24,40,.06)]">
-          <div className="flex items-center justify-between gap-5">
+        <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.045] p-5 shadow-xl shadow-black/10 sm:p-6">
+          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
             <div className="flex items-center gap-4">
-              <span className="grid h-14 w-14 place-items-center rounded-lg bg-red-50 text-[#e52b2f]">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg bg-violet-500/15 text-violet-300">
                 <Gift className="h-7 w-7" />
               </span>
               <div>
-                <h2 className="text-xl font-black">Publier les codes du jour</h2>
-                <p className="mt-1 text-sm font-semibold text-[#667085]">Le bouton appelle l’API, met les codes en cache, puis les retire automatiquement après 24H.</p>
+                <h2 className="text-lg font-semibold">Publier les codes du jour</h2>
+                <p className="mt-1 text-sm text-slate-400">Le bouton appelle l’API, met les codes en cache, puis les retire automatiquement après 24H.</p>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-3">
+            <div className="flex shrink-0 flex-wrap items-center gap-3">
               {enabled ? (
                 <button
                   disabled={loading}
                   onClick={disableCodes}
-                  className="h-12 rounded-lg bg-[#111827] px-5 text-sm font-black text-white transition hover:bg-black disabled:opacity-60"
+                  className="h-11 rounded-lg border border-white/10 px-5 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   Masquer
                 </button>
@@ -98,30 +95,30 @@ export default function AdminRedeemCodesPage() {
               <button
                 disabled={loading}
                 onClick={publishTodayCodes}
-                className="h-12 rounded-lg bg-[#e52b2f] px-6 text-sm font-black text-white transition hover:bg-[#c91f27] disabled:opacity-60"
+                className="h-11 rounded-lg bg-violet-600 px-6 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-60"
               >
                 {loading ? "Chargement..." : "Afficher les codes du jour"}
               </button>
             </div>
           </div>
 
-          <div className="mt-6 rounded-lg border border-[#e5e7eb] bg-white p-4">
-            <p className="flex items-center gap-2 text-sm font-black">
-              <ShieldCheck className={`h-5 w-5 ${enabled ? "text-emerald-600" : "text-[#667085]"}`} />
+          <div className="mt-6 rounded-lg border border-white/10 bg-black/15 p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <ShieldCheck className={`h-5 w-5 ${enabled ? "text-emerald-300" : "text-slate-500"}`} />
               Statut : {enabled ? "visible" : "masqué"}
             </p>
-            {publishedAt ? <p className="mt-3 text-sm font-semibold text-[#667085]">Publié le : {formatDate(publishedAt)}</p> : null}
-            {enabledUntil ? <p className="mt-1 text-sm font-semibold text-[#667085]">Visible jusqu’au : {formatDate(enabledUntil)}</p> : null}
-            {message ? <p className="mt-3 text-sm font-semibold text-[#667085]">{message}</p> : null}
+            {publishedAt ? <p className="mt-3 text-sm text-slate-400">Publié le : {formatDate(publishedAt)}</p> : null}
+            {enabledUntil ? <p className="mt-1 text-sm text-slate-400">Visible jusqu’au : {formatDate(enabledUntil)}</p> : null}
+            {message ? <p className="mt-3 text-sm text-violet-200">{message}</p> : null}
           </div>
 
-          <button onClick={load} className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg border border-[#d8dde7] px-4 text-xs font-black text-[#111827] transition hover:border-[#e52b2f]">
+          <button onClick={load} className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 px-4 text-xs text-slate-200">
             <RefreshCw className="h-4 w-4" />
             Rafraîchir le statut
           </button>
         </section>
       </section>
-    </main>
+    </AdminShell>
   );
 }
 

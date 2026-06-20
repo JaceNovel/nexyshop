@@ -1,8 +1,10 @@
 "use client";
 
-import { ArrowRight, BadgeCheck, Crown, Handshake, Megaphone, ShieldCheck, Store, Trophy, Users } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { ArrowRight, BadgeCheck, Crown, Handshake, Megaphone, Send, ShieldCheck, Store, Trophy, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
+import { submitPartnershipRequest } from "@/lib/api";
 
 const discordPartnerUrl =
   process.env.NEXT_PUBLIC_DISCORD_PARTNER_URL ??
@@ -46,6 +48,37 @@ const heroStats: Array<[string, string, LucideIcon]> = [
 ];
 
 export function PartenariatClient() {
+  const [form, setForm] = useState({
+    name: "",
+    company_name: "",
+    email: "",
+    discord: "",
+    country: "",
+    type: "Revendeur API Free Fire",
+    audience: "",
+    network_url: "",
+    expected_earning: "30 000 à 1 000 000+ FCFA / mois",
+    message: ""
+  });
+  const [status, setStatus] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setStatus("");
+
+    try {
+      const response = await submitPartnershipRequest(form);
+      setStatus(`Dossier reçu: ${response.reference}. Analyse en attente.`);
+      setForm((current) => ({ ...current, message: "" }));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Envoi impossible.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-white text-[#08111f]">
       <SiteHeader />
@@ -130,6 +163,36 @@ export function PartenariatClient() {
               </article>
             );
           })}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[1520px] px-4 pb-10 sm:px-6">
+        <div className="grid gap-5 rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-[0_18px_48px_rgba(15,23,42,.06)] lg:grid-cols-[.8fr_1.2fr]">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[.16em] text-[#ef2331]">Demande officielle</p>
+            <h2 className="mt-2 text-xl font-black sm:text-2xl">Devenir revendeur API Free Fire</h2>
+            <p className="mt-3 text-[13px] font-semibold leading-6 text-[#667085]">
+              Remplis ce dossier. Il part directement dans le salon partenariat Discord, puis l’admin peut créer ton accès reseller.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Nom du responsable" className="h-11 rounded-lg border border-[#d0d5dd] px-3 text-sm outline-none focus:border-[#ef2331]" required />
+              <input value={form.company_name} onChange={(event) => setForm({ ...form, company_name: event.target.value })} placeholder="Nom société / boutique" className="h-11 rounded-lg border border-[#d0d5dd] px-3 text-sm outline-none focus:border-[#ef2331]" />
+              <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="Email souhaité" type="email" className="h-11 rounded-lg border border-[#d0d5dd] px-3 text-sm outline-none focus:border-[#ef2331]" required />
+              <input value={form.discord} onChange={(event) => setForm({ ...form, discord: event.target.value })} placeholder="Discord" className="h-11 rounded-lg border border-[#d0d5dd] px-3 text-sm outline-none focus:border-[#ef2331]" />
+              <input value={form.country} onChange={(event) => setForm({ ...form, country: event.target.value })} placeholder="Pays" className="h-11 rounded-lg border border-[#d0d5dd] px-3 text-sm outline-none focus:border-[#ef2331]" />
+              <input value={form.audience} onChange={(event) => setForm({ ...form, audience: event.target.value })} placeholder="Volume estimé / audience" className="h-11 rounded-lg border border-[#d0d5dd] px-3 text-sm outline-none focus:border-[#ef2331]" />
+              <input value={form.network_url} onChange={(event) => setForm({ ...form, network_url: event.target.value })} placeholder="Site web / réseau social" className="h-11 rounded-lg border border-[#d0d5dd] px-3 text-sm outline-none focus:border-[#ef2331] sm:col-span-2" />
+            </div>
+            <textarea value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })} placeholder="Décris ton projet, ton site, tes clients et ton volume prévu." className="min-h-28 rounded-lg border border-[#d0d5dd] px-3 py-3 text-sm outline-none focus:border-[#ef2331]" required />
+            {status ? <p className="rounded-lg bg-[#f6f7fb] px-3 py-2 text-sm font-bold text-[#344054]">{status}</p> : null}
+            <button disabled={isSubmitting} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#ef2331] px-5 text-sm font-black text-white transition hover:-translate-y-0.5 disabled:opacity-60">
+              {isSubmitting ? "Envoi..." : "Envoyer le dossier"}
+              <Send className="h-4 w-4" />
+            </button>
+          </form>
         </div>
       </section>
 
