@@ -7,10 +7,10 @@ import { useEffect, useMemo, useState } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { useCart } from "@/components/cart-provider";
 import { useLanguage } from "@/components/language-provider";
-import { catalogFallbackImage, resolveCatalogImage } from "@/lib/catalog-images";
+import { catalogFallbackImage, hasCatalogProductImage, resolveCatalogImage } from "@/lib/catalog-images";
 import { createGuestOrder, getCatalogProduct, getFreeFireProfile, initiateMonerooPayment, type CatalogProduct, type CatalogRequiredField, type CatalogVariation, verifyGameUid } from "@/lib/api";
 
-const garenaAvatar = "https://cdn.simpleicons.org/garena/E4002B";
+const garenaAvatar = "https://www.stc.com.sa/content/dam/corporatesite/common/individual/direct-billing/logo_garena_g_stacked_Black_BG.png";
 
 function productText(product: Pick<CatalogProduct, "name" | "game" | "category">) {
   return `${product.name} ${product.game} ${product.category ?? ""}`.toLowerCase();
@@ -136,6 +136,18 @@ function fieldLabel(field: CatalogRequiredField, index: number) {
   return field.label || field.key || `Champ ${index + 1}`;
 }
 
+function isUidFieldKey(key: string) {
+  const normalized = key.toLowerCase();
+
+  return normalized.includes("uid") || normalized.includes("user") || normalized.includes("player") || normalized.includes("id");
+}
+
+function findUidFieldValue(fields: Record<string, string>) {
+  const directEntry = Object.entries(fields).find(([key, value]) => isUidFieldKey(key) && value.trim());
+
+  return directEntry?.[1]?.trim() ?? Object.values(fields).find((value) => value.trim())?.trim() ?? "";
+}
+
 function optionLabel(option: Record<string, unknown>) {
   return String(option.label ?? option.name ?? option.value ?? option.id ?? "");
 }
@@ -150,7 +162,9 @@ function AccountSummary({ profile, compact = false }: { profile: PlayerProfile; 
   return (
     <div className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg ${compact ? "" : "border border-emerald-200 bg-emerald-50 p-3"}`}>
       <span className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg bg-white ring-1 ring-black/5">
-        <img src={avatar} alt="" className="h-full w-full object-cover" />
+        <img src={avatar} alt="" onError={(event) => {
+          event.currentTarget.src = garenaAvatar;
+        }} className="h-full w-full object-cover" />
         <span className="absolute bottom-0 right-0 grid h-4 w-4 place-items-center rounded-full bg-white ring-1 ring-black/10">
           <img src={garenaAvatar} alt="" className="h-3 w-3 object-contain" />
         </span>
@@ -188,7 +202,7 @@ function publicProductReference(product: CatalogProduct) {
 
 export default function ProductPage() {
   const params = useParams<{ id: string }>();
-  const { user } = useUser();
+  const { isLoaded, user } = useUser();
   const { addItem, openCart, removeItem } = useCart();
   const { language, t, formatMoney } = useLanguage();
   const isFrench = language === "fr";
@@ -214,7 +228,7 @@ export default function ProductPage() {
     select: isFrench ? "Sélectionner" : "Select",
     changeId: isFrench ? "Mettre un autre ID" : "Use another ID",
     userId: isFrench ? "ID joueur" : "User ID",
-    fetchAccount: isFrench ? "Vérifier le compte" : "Fetch account info",
+    fetchAccount: isFrench ? "Vérifier l’ID" : "Verify ID",
     paymentEmail: isFrench ? "Email paiement" : "Payment email",
     phone: isFrench ? "Téléphone" : "Phone",
     firstName: isFrench ? "Prénom" : "First name",
@@ -243,6 +257,7 @@ export default function ProductPage() {
   const [verifiedProfile, setVerifiedProfile] = useState<PlayerProfile | null>(null);
   const [supplierFields, setSupplierFields] = useState<Record<string, string>>({});
   const [cartFeedback, setCartFeedback] = useState(false);
+  const [requestedCheckout, setRequestedCheckout] = useState(false);
 
   useEffect(() => {
     if (!params.id) return;
@@ -257,7 +272,7 @@ export default function ProductPage() {
     getCatalogProduct(params.id)
       .then((payload) => {
         setProduct(payload.data);
-        setRecommended(payload.recommended);
+        setRecommended(payload.recommended.filter(hasCatalogProductImage));
         const urlParams = new URLSearchParams(window.location.search);
         const requestedVariation = urlParams.get("variation");
         const productVariations = payload.data.variations ?? [];
@@ -267,7 +282,7 @@ export default function ProductPage() {
         setSelectedRegion(initialVariation ? variationRegion(initialVariation) : "Global");
         setQuantity(Math.max(1, Number(urlParams.get("quantity")) || 1));
         setSupplierFields(Object.fromEntries((payload.data.required_fields ?? []).map((field, index) => [fieldKey(field, index), ""])));
-        if (urlParams.get("checkout") === "1") setCheckoutOpen(true);
+        setRequestedCheckout(urlParams.get("checkout") === "1");
       })
       .catch(() => {
         setProduct(null);
@@ -275,6 +290,13 @@ export default function ProductPage() {
       })
       .finally(() => setLoadingProduct(false));
         }, [isFrench, params.id]);
+
+  useEffect(() => {
+    if (!requestedCheckout || !product || !isLoaded) return;
+
+    setRequestedCheckout(false);
+    openCheckout();
+  }, [isLoaded, product, requestedCheckout]);
 
   useEffect(() => {
     if (!product) return;
@@ -382,6 +404,31 @@ export default function ProductPage() {
   const hasDynamicFields = requiredFields.length > 0;
   const requiresUid = hasDynamicFields || product?.requires_uid !== false;
 
+  function redirectToLogin() {
+    const target = typeof window !== "undefined"
+      ? `${window.location.pathname}${window.location.search}`
+      : `/product/${params.id}`;
+
+    window.location.href = `/connexion?redirect=${encodeURIComponent(target)}`;
+  }
+
+  function requireCustomerSession() {
+    if (!isLoaded) {
+      setStatus("loading");
+      setMessage(isFrench ? "Vérification de ta session..." : "Checking your session...");
+      return false;
+    }
+
+    if (!user?.id) {
+      setStatus("error");
+      setMessage(isFrench ? "Connecte-toi ou crée un compte avant de passer commande." : "Sign in or create an account before ordering.");
+      redirectToLogin();
+      return false;
+    }
+
+    return true;
+  }
+
   function openCheckout() {
     if (!canPay) {
       setStatus("error");
@@ -389,11 +436,15 @@ export default function ProductPage() {
       return;
     }
 
+    if (!requireCustomerSession()) return;
+
     setMessage("");
     setCheckoutOpen(true);
   }
 
   function addSelectedItemToCart() {
+    if (!requireCustomerSession()) return;
+
     if (!product || !selectedVariation || !canPay) {
       setStatus("error");
       setMessage(language === "fr" ? "Ce produit ne peut pas encore être ajouté au panier." : "This product cannot be added to the cart yet.");
@@ -418,7 +469,9 @@ export default function ProductPage() {
   }
 
   async function verifyUid() {
-    if (!gameUid.trim()) {
+    const uidToVerify = gameUid.trim() || findUidFieldValue(supplierFields);
+
+    if (!uidToVerify) {
       setMessage(isFrench ? "Entre l’ID du compte à vérifier." : "Enter the account ID to verify.");
       return;
     }
@@ -429,17 +482,21 @@ export default function ProductPage() {
       const kind = gameKind(product);
 
       if (kind === "freefire") {
-        const profile = await getFreeFireProfile(gameUid.trim(), checkoutRegionCode(selectedRegion));
+        const profile = await getFreeFireProfile(uidToVerify, checkoutRegionCode(selectedRegion));
         const detectedProfile = {
-          uid: profile.uid || gameUid.trim(),
-          nickname: profile.nickname || profile.uid || gameUid.trim(),
-          avatar: profile.outfit_url || profile.avatar_url || garenaAvatar,
+          uid: profile.uid || uidToVerify,
+          nickname: profile.nickname || profile.uid || uidToVerify,
+          avatar: garenaAvatar,
           region: profile.region,
           source: isFrench ? "Compte Garena détecté" : "Garena account detected"
         };
 
         setNickname(detectedProfile.nickname);
         setGameUid(detectedProfile.uid);
+        setSupplierFields((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [
+          key,
+          isUidFieldKey(key) ? detectedProfile.uid : value
+        ])));
         setVerifiedProfile(detectedProfile);
         setStatus("verified");
         setMessage(isFrench ? `Compte vérifié: ${detectedProfile.nickname}. Confirme si c’est bien ce compte à recharger.` : `Account verified: ${detectedProfile.nickname}. Confirm this is the account to top up.`);
@@ -459,12 +516,35 @@ export default function ProductPage() {
       setStatus("verified");
       setMessage(isFrench ? `Compte vérifié: ${detectedProfile.nickname}. Confirme si c’est bien ce compte à recharger.` : `Account verified: ${detectedProfile.nickname}. Confirm this is the account to top up.`);
     } catch {
+      if (product && gameKind(product) === "freefire" && uidToVerify) {
+        const fallbackProfile = {
+          uid: uidToVerify,
+          nickname: uidToVerify,
+          avatar: garenaAvatar,
+          region: checkoutRegionCode(selectedRegion),
+          source: isFrench ? "ID renseigné" : "Entered ID"
+        };
+
+        setGameUid(fallbackProfile.uid);
+        setNickname(fallbackProfile.nickname);
+        setSupplierFields((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [
+          key,
+          isUidFieldKey(key) ? fallbackProfile.uid : value
+        ])));
+        setVerifiedProfile(fallbackProfile);
+        setStatus("verified");
+        setMessage(isFrench ? "La vérification Free Fire est indisponible pour le moment. Vérifie bien l’ID saisi avant de payer." : "Free Fire verification is unavailable right now. Carefully check the entered ID before paying.");
+        return;
+      }
+
       setStatus("error");
       setMessage(isFrench ? "Compte introuvable ou vérification impossible pour le moment. Vérifie l’ID puis réessaie." : "Account not found or verification is unavailable right now. Check the ID and try again.");
     }
   }
 
   async function prepareOrder() {
+    if (!requireCustomerSession()) return;
+
     const missingField = requiredFields.find((field, index) => !supplierFields[fieldKey(field, index)]?.trim());
     const firstSupplierValue = Object.values(supplierFields).find((value) => value.trim()) ?? "";
     const effectiveGameUid = gameUid.trim() || firstSupplierValue.trim() || "not-required";
@@ -710,13 +790,31 @@ export default function ProductPage() {
                         <input
                           type={field.type === "password" ? "password" : field.type === "email" ? "email" : "text"}
                           value={supplierFields[key] ?? ""}
-                          onChange={(event) => setSupplierFields((current) => ({ ...current, [key]: event.target.value }))}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setSupplierFields((current) => ({ ...current, [key]: nextValue }));
+                            if (isUidFieldKey(key)) {
+                              setGameUid(nextValue);
+                              setVerifiedProfile(null);
+                              setNickname("");
+                              setStatus("idle");
+                            }
+                          }}
                           className="mt-2 h-12 w-full rounded border border-[#0b55d9] px-4 outline-none"
                         />
                       )}
                     </label>
                   );
                 })}
+                {product && gameKind(product) === "freefire" ? (
+                  <div className="grid gap-3 rounded-xl border border-[#e5e7eb] bg-[#f8fafc] p-3">
+                    <button type="button" onClick={verifyUid} disabled={status === "loading"} className="interactive-button flex h-12 items-center justify-center rounded bg-[#0b55d9] text-sm font-black text-white active:scale-[.98] disabled:opacity-60">
+                      {status === "loading" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {labels.fetchAccount}
+                    </button>
+                    {verifiedProfile ? <AccountSummary profile={verifiedProfile} /> : null}
+                  </div>
+                ) : null}
               </div>
             ) : requiresUid ? (
               <div className="mt-5">
@@ -739,7 +837,12 @@ export default function ProductPage() {
                   <div className="mt-3 grid gap-3">
                     <label>
                       <span className="text-sm font-bold">{labels.userId} <span className="text-[#ef2b2d]">*</span></span>
-                      <input value={gameUid} onChange={(event) => setGameUid(event.target.value)} className="mt-2 h-12 w-full rounded border border-[#0b55d9] px-4 outline-none" />
+                      <input value={gameUid} onChange={(event) => {
+                        setGameUid(event.target.value);
+                        setVerifiedProfile(null);
+                        setNickname("");
+                        setStatus("idle");
+                      }} className="mt-2 h-12 w-full rounded border border-[#0b55d9] px-4 outline-none" />
                     </label>
                     <button type="button" onClick={verifyUid} disabled={status === "loading"} className="interactive-button flex h-12 items-center justify-center rounded bg-[#0b55d9] text-sm font-black text-white active:scale-[.98] disabled:opacity-60">
                       {status === "loading" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -783,7 +886,7 @@ export default function ProductPage() {
                 <p className="text-xs font-bold text-[#667085]">{labels.total}</p>
                 <b className="text-xl text-[#ef2b2d]">{formatMoney(total, unitPriceCurrency, { unavailableLabel: labels.unavailablePrice })}</b>
               </div>
-              <button type="button" onClick={prepareOrder} disabled={status === "loading" || (!hasDynamicFields && requiresUid && !verifiedProfile)} className="interactive-button flex h-12 min-w-0 flex-1 items-center justify-center rounded bg-[#0b55d9] px-4 text-sm font-black text-white active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[180px] sm:flex-none sm:px-5">
+              <button type="button" onClick={prepareOrder} disabled={status === "loading"} className="interactive-button flex h-12 min-w-0 flex-1 items-center justify-center rounded bg-[#0b55d9] px-4 text-sm font-black text-white active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[180px] sm:flex-none sm:px-5">
                 {status === "loading" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {labels.confirmPay}
               </button>
@@ -797,12 +900,12 @@ export default function ProductPage() {
           <h2 className="mb-5 text-xl font-black">{labels.recommended}</h2>
           <div className="grid grid-cols-3 gap-2 sm:gap-3 md:grid-cols-4 md:gap-4 xl:grid-cols-6">
             {recommended.map((item) => (
-              <a key={item.id} href={`/product/${item.id}`} className="min-w-0 rounded-lg border border-[#ececf3] p-1.5 transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(17,24,39,.08)] md:p-3">
+              <a key={item.id} href={`/product/${item.id}`} className="min-w-0 rounded-lg border border-[#ececf3] p-1 transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(17,24,39,.08)] md:p-2">
                 <img src={productImage(item)} alt={item.name} onError={(event) => {
-                  event.currentTarget.src = catalogFallbackImage(item);
-                }} className="aspect-square rounded object-cover" />
-                <b className="mt-2 line-clamp-2 block min-h-[30px] text-[10.5px] leading-[15px] md:mt-3 md:min-h-0 md:text-sm md:leading-5">{item.name}</b>
-                <small className="mt-1 block truncate text-[10px] font-bold text-[#697081] md:mt-2 md:text-xs">{formatMoney(productBasePrice(item), item.currency, { unavailableLabel: labels.unavailablePrice })}</small>
+                  event.currentTarget.closest("a")?.remove();
+                }} className="aspect-[4/5] w-full rounded object-cover" decoding="async" />
+                <span className="mt-2 line-clamp-2 block min-h-[30px] text-[10.5px] font-normal leading-[15px] md:mt-3 md:min-h-0 md:text-sm md:leading-5">{item.name}</span>
+                <small className="mt-1 block truncate text-[10px] font-normal text-[#697081] md:mt-2 md:text-xs">{formatMoney(productBasePrice(item), item.currency, { unavailableLabel: labels.unavailablePrice })}</small>
               </a>
             ))}
           </div>

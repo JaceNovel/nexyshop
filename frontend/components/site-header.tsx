@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useCart } from "@/components/cart-provider";
 import { CountryFlag } from "@/components/country-flag";
 import { useLanguage, type DisplayCurrency, type SiteLanguage } from "@/components/language-provider";
-import { resolveCatalogImage } from "@/lib/catalog-images";
+import { hasCatalogProductImage, resolveCatalogImage } from "@/lib/catalog-images";
 import { getAstralMails, getCatalogProducts, getHeaderNotifications, markAstralMailRead, type AstralMailMessage, type CatalogProduct, type HeaderNotification } from "@/lib/api";
 
 const brandLogo = "/ChatGPT_Image_28_mai_2026__20_26_02-removebg-preview.png";
@@ -57,8 +57,8 @@ type NavMenuItem = {
 };
 
 const liveItems = [
-  { name: "Live en direct", image: "/unnamed.png", href: "/live" },
-  { name: "Lives passés", image: "/unnamed.png", href: "/live/passe" }
+  { name: "Live en direct", image: "/icon.svg", href: "/live" },
+  { name: "Lives passés", image: "/icon.svg", href: "/live/passe" }
 ] satisfies NavMenuItem[];
 
 function productsToMenuItems(products: CatalogProduct[], limit = 24): NavMenuItem[] {
@@ -67,7 +67,7 @@ function productsToMenuItems(products: CatalogProduct[], limit = 24): NavMenuIte
   products.forEach((product) => {
     const name = product.name.trim();
 
-    if (name && !byName.has(name)) {
+    if (name && hasCatalogProductImage(product) && !byName.has(name)) {
       byName.set(name, product);
     }
   });
@@ -99,6 +99,47 @@ function catalogProductPrice(
     prefix: hasRange ? (language === "fr" ? "Dès " : "From ") : "",
     unavailableLabel: language === "fr" ? "Prix indisponible" : "Price unavailable"
   });
+}
+
+function searchableProductText(product: CatalogProduct, field: "name" | "all" = "all") {
+  const text = field === "name"
+    ? product.name
+    : `${product.name} ${product.game ?? ""} ${product.category ?? ""} ${product.public_reference ?? ""} ${product.sku ?? ""}`;
+
+  return normalizeSearch(text);
+}
+
+function rankSearchProduct(product: CatalogProduct, query: string) {
+  const normalizedQuery = normalizeSearch(query);
+  const terms = normalizedQuery.split(" ").filter(Boolean);
+  const name = searchableProductText(product, "name");
+  const all = searchableProductText(product, "all");
+  let score = 0;
+
+  if (!terms.length) return score;
+  if (name === normalizedQuery) score += 1000;
+  if (name.includes(normalizedQuery)) score += 600;
+  if (terms.every((term) => name.includes(term))) score += 450;
+  if (terms.every((term) => all.includes(term))) score += 220;
+
+  terms.forEach((term) => {
+    if (name.includes(term)) score += 45;
+    else if (all.includes(term)) score += 12;
+  });
+
+  if (name.startsWith(terms[0] ?? "")) score += 40;
+  if (Number(product.price) > 0 || Number(product.price_range?.min) > 0) score += 5;
+
+  return score;
+}
+
+function sortSearchSuggestions(products: CatalogProduct[], query: string) {
+  return [...products]
+    .map((product, index) => ({ product, index, score: rankSearchProduct(product, query) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.product)
+    .slice(0, 8);
 }
 
 function NavLink({ href, children }: { href: string; children: ReactNode }) {
@@ -137,7 +178,14 @@ function MobileNavSheet({ title, href, items, onClose }: { title: string; href: 
         <div className="grid gap-2 overflow-y-auto p-3">
           {items.length ? items.map((item) => (
             <a key={item.name} href={item.href} className="flex min-h-14 items-center gap-3 rounded-lg border border-[#edf0f4] bg-white px-3 py-2 text-sm font-normal text-[#111827] shadow-[0_6px_18px_rgba(16,24,40,.04)]">
-              <img src={item.image} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+              <img
+                src={item.image}
+                alt=""
+                onError={(event) => {
+                  event.currentTarget.closest("a")?.remove();
+                }}
+                className="h-9 w-9 shrink-0 rounded-lg object-cover"
+              />
               <span className="min-w-0 flex-1 truncate">{item.name}</span>
               <ChevronDown className="-rotate-90 h-4 w-4 text-[#98a2b3]" />
             </a>
@@ -170,12 +218,19 @@ function NavDropdown({ href, label, items }: { href: string; label: string; item
       >
         {label} <ChevronDown className="h-4 w-4 stroke-[2.4] transition group-hover:rotate-180" />
       </a>
-      <div className="invisible absolute left-0 top-12 z-50 hidden w-[min(1024px,calc(100vw-2rem))] rounded-b-lg bg-[#f3f3f3] px-4 pb-4 pt-6 opacity-0 shadow-[0_12px_32px_rgba(16,24,40,.12)] transition group-hover:visible group-hover:opacity-100 md:block">
-        <div className="grid grid-cols-3 gap-x-14 gap-y-4 font-normal">
+      <div className="invisible absolute left-0 top-12 z-50 hidden w-[min(1024px,calc(100vw-2rem))] rounded-b-lg bg-[#f3f3f3] px-4 pb-4 pt-5 opacity-0 shadow-[0_12px_32px_rgba(16,24,40,.12)] transition group-hover:visible group-hover:opacity-100 md:block">
+        <div className="grid grid-cols-3 gap-x-12 gap-y-3 font-normal">
           {items.length ? items.map((item) => (
-            <a key={item.name} href={item.href} className="flex min-w-0 items-center gap-3 rounded-md px-2 py-2 text-black transition hover:-translate-y-0.5 hover:shadow-[0_8px_18px_rgba(16,24,40,.1)]">
-              <img src={item.image} alt="" className="h-9 w-9 shrink-0 rounded-lg bg-[#f4f4f5] object-contain p-1" />
-              <span className="line-clamp-2 min-w-0 break-words text-[14px] leading-5">{item.name}</span>
+            <a key={item.name} href={item.href} className="flex min-w-0 items-center gap-3 rounded-md px-2 py-1.5 text-black transition hover:-translate-y-0.5 hover:bg-white/70 hover:shadow-[0_8px_18px_rgba(16,24,40,.08)]">
+              <img
+                src={item.image}
+                alt=""
+                onError={(event) => {
+                  event.currentTarget.closest("a")?.remove();
+                }}
+                className="h-11 w-11 shrink-0 rounded-lg bg-white object-cover shadow-sm ring-1 ring-black/5"
+              />
+              <span className="line-clamp-2 min-w-0 break-words text-[13px] font-normal leading-[18px]">{item.name}</span>
             </a>
           )) : <p className="col-span-3 rounded-lg bg-white px-4 py-8 text-center text-sm font-normal text-[#667085]">Chargement du catalogue...</p>}
         </div>
@@ -263,6 +318,7 @@ export function SiteHeader() {
   const [showCodNav, setShowCodNav] = useState(false);
   const [topUpItems, setTopUpItems] = useState<NavMenuItem[]>([]);
   const [giftItems, setGiftItems] = useState<NavMenuItem[]>([]);
+  const [gameKeyItems, setGameKeyItems] = useState<NavMenuItem[]>([]);
   const [searchSuggestions, setSearchSuggestions] = useState<CatalogProduct[]>([]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -361,10 +417,10 @@ export function SiteHeader() {
     let cancelled = false;
     setSearchLoading(true);
     const timer = window.setTimeout(() => {
-      getCatalogProducts(8, { q: query })
+      getCatalogProducts(40, { q: query })
         .then((payload) => {
           if (!cancelled) {
-            setSearchSuggestions(payload.data);
+            setSearchSuggestions(sortSearchSuggestions(payload.data.filter(hasCatalogProductImage), query));
           }
         })
         .catch(() => {
@@ -390,19 +446,22 @@ export function SiteHeader() {
 
     async function loadCatalogMenus() {
       try {
-        const [topUps, gifts] = await Promise.all([
+        const [topUps, gifts, gameKeys] = await Promise.all([
           getCatalogProducts(240, { category: "top-up" }),
-          getCatalogProducts(240, { category: "gift-card" })
+          getCatalogProducts(240, { category: "gift-card" }),
+          getCatalogProducts(240, { category: "game-key" })
         ]);
 
         if (!cancelled) {
           setTopUpItems(productsToMenuItems(topUps.data));
           setGiftItems(productsToMenuItems(gifts.data));
+          setGameKeyItems(productsToMenuItems(gameKeys.data));
         }
       } catch {
         if (!cancelled) {
           setTopUpItems([]);
           setGiftItems([]);
+          setGameKeyItems([]);
         }
       }
     }
@@ -586,7 +645,14 @@ export function SiteHeader() {
                         }}
                         className="grid min-h-[62px] grid-cols-[46px_minmax(0,1fr)] items-center gap-2 rounded-lg px-2 py-2 transition active:scale-[.99] active:bg-[#f1f5f9] hover:bg-[#f8fafc] sm:grid-cols-[48px_minmax(0,1fr)_auto] sm:gap-3"
                       >
-                        <img src={resolveCatalogImage(product)} alt="" className="h-11 w-11 shrink-0 rounded-lg bg-[#f4f4f5] object-contain p-1.5 sm:h-12 sm:w-12" />
+                        <img
+                          src={resolveCatalogImage(product)}
+                          alt=""
+                          onError={(event) => {
+                            event.currentTarget.closest("a")?.remove();
+                          }}
+                          className="h-11 w-11 shrink-0 rounded-lg bg-[#f4f4f5] object-cover sm:h-12 sm:w-12"
+                        />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-normal text-[#111827]">{product.name}</span>
                           <span className="mt-0.5 block truncate text-xs font-semibold text-[#667085]">{product.category ?? product.type ?? "Catalogue"}</span>
@@ -718,14 +784,14 @@ export function SiteHeader() {
         </div>
 
         <nav className="hidden h-11 items-center gap-4 overflow-x-auto whitespace-nowrap text-[13px] font-normal md:flex md:h-12 md:overflow-visible md:gap-8 md:text-[16px]">
-	          <NavLink href="/">{t("home")}</NavLink>
+          <NavLink href="/">{t("home")}</NavLink>
           <NavDropdown href="/category/top-up" label={t("gameCredits")} items={topUpItems} />
           <NavDropdown href="/category/carte-cadeau" label={t("giftCards")} items={giftItems} />
+          <NavDropdown href="/category/game-keys" label={language === "fr" ? "Clés de jeux" : "Game Keys"} items={gameKeyItems} />
 	          <LiveDropdown label={t("live")} />
 	          {showPubgNav ? <PubgDropdown /> : null}
 	          <NavLink href="/tournois">{t("tournaments")}</NavLink>
 	          {!showPubgNav && !showCodNav ? <NavLink href="/duel">{t("duel")}</NavLink> : null}
-	          <NavLink href="/communaute">{t("community")}</NavLink>
 	          <NavLink href="/profil-public">{t("publicProfile")}</NavLink>
 	          {!showCodNav ? <NavLink href="/partenariat">{t("partnership")}</NavLink> : null}
 	          <NavLink href="/jeux-avenir">{t("upcoming")}</NavLink>
@@ -736,14 +802,20 @@ export function SiteHeader() {
         <MobileCategoryDrawer
           topUpItems={topUpItems}
           giftItems={giftItems}
+          gameKeyItems={gameKeyItems}
           liveItems={liveItems}
           labels={{
             title: language === "fr" ? "Catégories" : "Categories",
             home: t("home"),
             gameCredits: t("gameCredits"),
             giftCards: t("giftCards"),
-            paymentServices: language === "fr" ? "Services de paiement" : "Payment Services",
+            gameKeys: language === "fr" ? "Clés de jeux" : "Game Keys",
             live: t("live"),
+            tournaments: t("tournaments"),
+            duel: t("duel"),
+            publicProfile: t("publicProfile"),
+            partnership: t("partnership"),
+            upcoming: t("upcoming"),
             blog: t("blog"),
             seeAll: t("seeAll")
           }}
@@ -841,17 +913,23 @@ function MobileBottomNavigation({ itemCount, labels, onOpenCategories, onOpenCar
   );
 }
 
-function MobileCategoryDrawer({ topUpItems, giftItems, liveItems, labels, onClose }: {
+function MobileCategoryDrawer({ topUpItems, giftItems, gameKeyItems, liveItems, labels, onClose }: {
   topUpItems: NavMenuItem[];
   giftItems: NavMenuItem[];
+  gameKeyItems: NavMenuItem[];
   liveItems: NavMenuItem[];
   labels: {
     title: string;
     home: string;
     gameCredits: string;
     giftCards: string;
-    paymentServices: string;
+    gameKeys: string;
     live: string;
+    tournaments: string;
+    duel: string;
+    publicProfile: string;
+    partnership: string;
+    upcoming: string;
     blog: string;
     seeAll: string;
   };
@@ -870,8 +948,16 @@ function MobileCategoryDrawer({ topUpItems, giftItems, liveItems, labels, onClos
   const sections = [
     { key: "game", label: labels.gameCredits, href: "/category/top-up", items: topUpItems },
     { key: "gift", label: labels.giftCards, href: "/category/carte-cadeau", items: giftItems },
-    { key: "payment", label: labels.paymentServices, href: "/category/manual-services", items: [] },
+    { key: "keys", label: labels.gameKeys, href: "/category/game-keys", items: gameKeyItems },
     { key: "live", label: labels.live, href: "/live", items: liveItems }
+  ];
+  const directLinks = [
+    { label: labels.tournaments, href: "/tournois" },
+    { label: labels.duel, href: "/duel" },
+    { label: labels.publicProfile, href: "/profil-public" },
+    { label: labels.partnership, href: "/partenariat" },
+    { label: labels.upcoming, href: "/jeux-avenir" },
+    { label: labels.blog, href: "/blog" }
   ];
 
   return (
@@ -883,7 +969,7 @@ function MobileCategoryDrawer({ topUpItems, giftItems, liveItems, labels, onClos
           </button>
           <h2 className="text-base font-black text-[#111827]">{labels.title}</h2>
         </header>
-        <div className="flex-1 overflow-y-auto px-4 py-5">
+        <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-24">
           <a href="/" onClick={onClose} className="flex min-h-11 items-center text-[15px] font-medium text-[#111827]">{labels.home}</a>
           {sections.map((section) => {
             const open = openSection === section.key;
@@ -896,9 +982,16 @@ function MobileCategoryDrawer({ topUpItems, giftItems, liveItems, labels, onClos
                 </button>
                 {open ? (
                   <div className="grid gap-1 pb-3">
-                    {section.items.slice(0, 10).map((item) => (
+                    {section.items.slice(0, 24).map((item) => (
                       <a key={item.name} href={item.href} onClick={onClose} className="flex min-h-11 items-center gap-3 rounded-lg px-2 text-sm text-[#374151] hover:bg-[#f8fafc]">
-                        <img src={item.image} alt="" className="h-8 w-8 rounded-lg object-cover" />
+                        <img
+                          src={item.image}
+                          alt=""
+                          onError={(event) => {
+                            event.currentTarget.closest("a")?.remove();
+                          }}
+                          className="h-8 w-8 rounded-lg bg-[#f8fafc] object-cover ring-1 ring-[#eef0f4]"
+                        />
                         <span className="min-w-0 flex-1 truncate">{item.name}</span>
                       </a>
                     ))}
@@ -910,7 +1003,13 @@ function MobileCategoryDrawer({ topUpItems, giftItems, liveItems, labels, onClos
               </div>
             );
           })}
-          <a href="/blog" onClick={onClose} className="flex min-h-12 items-center text-[15px] font-medium text-[#111827]">{labels.blog}</a>
+          <div className="mt-1 border-t border-[#f1f2f4] pt-2">
+            {directLinks.map((link) => (
+              <a key={link.href} href={link.href} onClick={onClose} className="flex min-h-12 items-center text-[15px] font-medium text-[#111827]">
+                {link.label}
+              </a>
+            ))}
+          </div>
         </div>
       </section>
     </div>

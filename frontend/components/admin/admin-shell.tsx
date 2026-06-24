@@ -12,7 +12,7 @@ import {
 const groups = [
   { title: "", items: [["Tableau de bord", "/admin", LayoutDashboard], ["Demandes partenaires", "/admin/resellers", KeyRound]] },
   { title: "Utilisateurs", items: [["Utilisateurs", "/admin/users", Users], ["Joueurs", "/admin/players", Gamepad2], ["Roles & permissions", "/admin/roles", ShieldCheck]] },
-  { title: "Tournois", items: [["Tournois", "/admin/tournaments", Trophy], ["Participations", "/admin/participations", Users], ["Matchs", "/admin/matches", Gamepad2], ["Classements", "/admin/rankings", BarChart3], ["Calendrier", "/admin/calendar", CalendarDays]] },
+  { title: "Tournois", items: [["Tournois", "/admin/tournaments", Trophy], ["Gestion live", "/admin/live", Activity], ["Participations", "/admin/participations", Users], ["Matchs", "/admin/matches", Gamepad2], ["Classements", "/admin/rankings", BarChart3], ["Calendrier", "/admin/calendar", CalendarDays]] },
   { title: "Boutique", items: [["Produits", "/admin/products", Package], ["Commandes", "/admin/orders", ShoppingCart], ["Transactions", "/admin/transactions", Wallet], ["Revendeurs API", "/admin/resellers", KeyRound], ["Codes promo", "/admin/redeem-codes", Percent]] },
   { title: "Contenu", items: [["Actualites", "/admin/blog", BookOpen], ["Pages", "/admin/pages", BookOpen], ["Video & lives", "/admin/video", Activity], ["Bannieres", "/admin/banners", BarChart3]] },
   { title: "Parametres", items: [["Parametres", "/admin/settings", Settings], ["API & integrations", "/admin/integrations", KeyRound], ["Journaux", "/admin/logs", Activity]] }

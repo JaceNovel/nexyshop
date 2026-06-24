@@ -42,11 +42,30 @@ function hasBlockedCatalogImage(imageUrl: string) {
   return (
     !normalized
     || normalized.startsWith("data:image/svg+xml")
+    || normalized.startsWith("/icon")
+    || normalized.includes("/icon.")
+    || normalized.includes("/unnamed")
+    || normalized.includes("simpleicons.org")
+    || normalized.includes("favicon")
     || normalized.includes("placeholder")
     || normalized.includes("not-found")
     || normalized.includes("not%20found")
     || normalized.endsWith("/icon.svg")
   );
+}
+
+export function hasCatalogProductImage(product: Pick<CatalogProduct, "image_url">) {
+  const imageUrl = product.image_url?.trim();
+
+  return Boolean(imageUrl && !hasBlockedCatalogImage(imageUrl));
+}
+
+function enhanceCatalogImageUrl(imageUrl: string) {
+  return imageUrl
+    .replace(/capsule_231x87(\.[a-z0-9]+)(\?|$)/i, "capsule_616x353$1$2")
+    .replace(/capsule_sm_120(\.[a-z0-9]+)(\?|$)/i, "capsule_616x353$1$2")
+    .replace(/capsule_184x69(\.[a-z0-9]+)(\?|$)/i, "capsule_616x353$1$2")
+    .replace(/_600x900(\.[a-z0-9]+)(\?|$)/i, "_1200x1800$1$2");
 }
 
 export function catalogFallbackImage(product: Pick<CatalogProduct, "name" | "game" | "category">) {
@@ -86,9 +105,9 @@ export function resolveCatalogImage(product: CatalogImageProduct) {
   const imageUrl = product.image_url?.trim();
   const identity = catalogIdentity(product);
 
-  if (imageUrl && !hasBlockedCatalogImage(imageUrl)) {
+  if (imageUrl && hasCatalogProductImage(product)) {
     if (!imageUrl.toLowerCase().includes("pubg") || identity.includes("pubg")) {
-      return imageUrl;
+      return enhanceCatalogImageUrl(imageUrl);
     }
   }
 

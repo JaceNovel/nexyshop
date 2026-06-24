@@ -8,6 +8,7 @@ import { type SyntheticEvent, useEffect, useState } from "react";
 import { useLanguage } from "@/components/language-provider";
 import { SiteHeader } from "@/components/site-header";
 import { type CatalogProduct, getCatalogProducts } from "@/lib/api";
+import { hasCatalogProductImage } from "@/lib/catalog-images";
 
 const gameImages = {
   astral: "/icon.svg",
@@ -17,8 +18,12 @@ const gameImages = {
   mobileLegends: "https://media.rawg.io/media/resize/640/-/screenshots/ca8/ca8a011899a0743ee717c0a2f056f0af.jpg",
   fortnite: "/the-death-star-sabotage-event-for-fortnite-begins-on-july-7-cover684382a44e794.jpg",
   brawl: "https://media.rawg.io/media/resize/640/-/screenshots/ffa/ffa1cac1582ab3a81cf77e98435101ac.jpg",
-  valorant: "https://media.rawg.io/media/resize/640/-/screenshots/4e2/4e2b6b1e7f0f3d3d3b5573d0ab826d6e.jpg",
+  valorant: "https://cdn.simpleicons.org/valorant/ff4655",
   genshin: "https://media.rawg.io/media/resize/640/-/screenshots/3b7/3b7f00f2f47ed0f8c3c31ef3dbd4adc6.jpg",
+  honkai: "https://media.rawg.io/media/resize/640/-/screenshots/55d/55d3c9f5ddf77405c182621b929956ea.jpg",
+  honorOfKings: "https://cdn.simpleicons.org/tencentqq/ffbf00",
+  zenless: "https://media.rawg.io/media/resize/640/-/screenshots/b2a/b2a11a759dc222a112276b0ce69d08cc.jpg",
+  loveAndDeepspace: "https://media.rawg.io/media/resize/640/-/screenshots/4b9/4b91d51a67ca20d0c7645467c5977200.jpg",
   apple: "https://cdn.simpleicons.org/apple/111111",
   amazon: "https://cdn.simpleicons.org/amazon/FF9900",
   discord: "https://cdn.simpleicons.org/discord/5865F2",
@@ -108,7 +113,7 @@ const catalogShortcuts = [
     label: "Honkai: Star Rail",
     fallbackHref: "/category/top-up?q=honkai",
     searchTerms: ["honkai star rail", "honkai"],
-    image: "https://media.rawg.io/media/resize/640/-/screenshots/55d/55d3c9f5ddf77405c182621b929956ea.jpg"
+    image: gameImages.honkai
   },
   {
     key: "mobile-legends",
@@ -122,21 +127,21 @@ const catalogShortcuts = [
     label: "Love and Deepspace",
     fallbackHref: "/category/top-up?q=love%20and%20deepspace",
     searchTerms: ["love and deepspace", "love deepspace"],
-    image: "https://media.rawg.io/media/resize/640/-/screenshots/4b9/4b91d51a67ca20d0c7645467c5977200.jpg"
+    image: gameImages.loveAndDeepspace
   },
   {
     key: "honor-of-kings",
     label: "Honor of Kings",
     fallbackHref: "/category/top-up?q=honor%20of%20kings",
     searchTerms: ["honor of kings"],
-    image: "https://media.rawg.io/media/resize/640/-/screenshots/826/826da47d8e91bfaf1fa8d40ebb90e40c.jpg"
+    image: gameImages.honorOfKings
   },
   {
     key: "zenless-zone-zero",
     label: "Zenless Zone Zero",
     fallbackHref: "/category/top-up?q=zenless",
     searchTerms: ["zenless zone zero", "zenless"],
-    image: "https://media.rawg.io/media/resize/640/-/screenshots/b2a/b2a11a759dc222a112276b0ce69d08cc.jpg"
+    image: gameImages.zenless
   },
   {
     key: "gearup",
@@ -211,15 +216,7 @@ function bestProductImage(product: Pick<CatalogProduct, "name" | "game" | "categ
 }
 
 function hasRealCatalogImage(product: Pick<CatalogProduct, "image_url">) {
-  const imageUrl = product.image_url?.trim().toLowerCase();
-
-  return Boolean(
-    imageUrl &&
-    !imageUrl.endsWith("/icon.svg") &&
-    !imageUrl.includes("placeholder") &&
-    !imageUrl.includes("not-found") &&
-    !imageUrl.includes("not%20found")
-  );
+  return hasCatalogProductImage(product);
 }
 
 function preventBrokenImage(event: SyntheticEvent<HTMLImageElement>, fallback = gameImages.astral) {
@@ -286,7 +283,7 @@ function preferredHomeProducts(
     const name = product.name.trim().toLowerCase();
     const hasPrice = bestProductPrice(product, "fr", formatMoney) !== "Prix bientôt";
 
-    if (!name || seenNames.has(name) || !hasPrice) {
+    if (!name || seenNames.has(name) || !hasPrice || !hasRealCatalogImage(product)) {
       return false;
     }
 
@@ -325,22 +322,30 @@ export default function Home() {
           lastPage = Math.max(1, Number(response.meta?.last_page ?? 1));
         }
 
-        const currentProducts = preferredHomeProducts(response.data, formatMoney);
+        let currentProducts = preferredHomeProducts(response.data, formatMoney);
         let selection = currentProducts.slice(offset, offset + homeProductCount);
         let nextPage = selectedPage;
         let nextOffset = offset + homeProductCount;
         let nextPageProductCount = currentProducts.length;
+        let pagesChecked = 0;
 
-        if (selection.length < homeProductCount && lastPage > 1) {
+        while (selection.length < homeProductCount && lastPage > 1 && pagesChecked < Math.min(lastPage, 8)) {
           const neededProducts = homeProductCount - selection.length;
           const followingPage = selectedPage >= lastPage ? 1 : selectedPage + 1;
-          const followingResponse = await getCatalogProducts(homeProductFetchCount, { page: followingPage, refresh: Date.now() + 2 });
+          const followingResponse = await getCatalogProducts(homeProductFetchCount, { page: followingPage, refresh: Date.now() + 2 + pagesChecked });
           const followingProducts = preferredHomeProducts(followingResponse.data, formatMoney);
 
           selection = [...selection, ...followingProducts.slice(0, neededProducts)];
           nextPage = followingPage;
           nextOffset = neededProducts;
           nextPageProductCount = followingProducts.length;
+          selectedPage = followingPage;
+          currentProducts = followingProducts;
+          pagesChecked += 1;
+
+          if (!currentProducts.length) {
+            nextOffset = 0;
+          }
         }
 
         if (nextOffset >= nextPageProductCount) {
@@ -481,7 +486,7 @@ export default function Home() {
             {catalogShortcuts.slice(0, 12).map((shortcut, index) => {
               const product = shortcutProducts[shortcut.key];
               const href = product ? `/product/${product.id}` : shortcut.fallbackHref;
-              const image = product ? bestProductImage(product) : shortcut.image;
+              const image = product && hasRealCatalogImage(product) ? bestProductImage(product) : shortcut.image;
               const fallback = product ? fallbackImageForProduct(product) : gameImages.astral;
 
               return (
@@ -490,7 +495,7 @@ export default function Home() {
                   href={href}
                   className={`group min-w-0 flex-col items-center justify-start border-r border-[#d9d9dc] px-1 last:border-r-0 md:flex md:px-2 ${index >= 4 ? "hidden" : "flex"}`}
                 >
-                  <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5 md:h-16 md:w-16 md:rounded-xl">
+                  <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5 sm:h-16 sm:w-16 md:h-[74px] md:w-[74px] md:rounded-xl">
                     <img
                       src={image}
                       alt={shortcut.label}
@@ -498,7 +503,7 @@ export default function Home() {
                       className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     />
                   </span>
-                  <span className="mt-2 line-clamp-2 w-full text-center text-[10.5px] leading-4 text-black md:text-[12px] md:leading-5">
+                  <span className="mt-2 line-clamp-2 w-full text-center text-[10px] leading-[14px] text-black md:text-[11px] md:leading-4">
                     {shortcut.label}
                   </span>
                 </a>
@@ -521,13 +526,19 @@ export default function Home() {
         {catalogStatus === "ready" ? (
           <div className="grid grid-cols-3 gap-2 sm:gap-3 md:grid-cols-4 md:gap-x-6 md:gap-y-10 xl:grid-cols-8">
             {products.map((product, index) => (
-              <a href={`/product/${product.id}`} key={product.id} className={`soft-pop min-w-0 rounded-lg p-1.5 md:rounded-xl md:p-3 ${index === 3 ? "bg-[#f3f3f3]" : "bg-white"}`}>
-                <div className="relative aspect-square overflow-hidden rounded-md bg-[#f4f4f5] md:rounded-lg">
-                  <img src={bestProductImage(product)} alt={product.name} onError={(event) => preventBrokenImage(event, fallbackImageForProduct(product))} className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+              <a href={`/product/${product.id}`} key={product.id} className={`soft-pop min-w-0 rounded-lg p-1 md:rounded-xl md:p-2 ${index === 3 ? "bg-[#f3f3f3]" : "bg-white"}`}>
+                <div className="relative aspect-[4/5] overflow-hidden rounded-md bg-[#f4f4f5] md:rounded-lg">
+                  <img
+                    src={bestProductImage(product)}
+                    alt={product.name}
+                    onError={() => setProducts((current) => current.filter((item) => item.id !== product.id))}
+                    className="h-full w-full scale-[1.03] object-cover transition duration-300 hover:scale-110"
+                    decoding="async"
+                  />
                 </div>
                 <div className="px-0.5 py-1.5 md:px-1 md:py-3">
-                  <h3 className="line-clamp-2 min-h-[30px] text-[10.5px] font-semibold leading-[15px] text-[#004bd6] md:min-h-[42px] md:text-[14px] md:leading-5">{product.name}</h3>
-                  <p className="mt-1 truncate text-right text-[10px] font-medium text-black md:mt-5 md:text-[14px]">{bestProductPrice(product, language, formatMoney)}</p>
+                  <h3 className="line-clamp-2 min-h-[30px] text-[10.5px] font-normal leading-[15px] text-[#004bd6] md:min-h-[42px] md:text-[14px] md:leading-5">{product.name}</h3>
+                  <p className="mt-1 truncate text-right text-[10px] font-normal text-black md:mt-5 md:text-[14px]">{bestProductPrice(product, language, formatMoney)}</p>
                 </div>
               </a>
             ))}

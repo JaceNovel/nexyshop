@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { type SyntheticEvent, useEffect, useMemo, useState } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { useLanguage } from "@/components/language-provider";
-import { catalogFallbackImage, resolveCatalogImage } from "@/lib/catalog-images";
+import { hasCatalogProductImage, resolveCatalogImage } from "@/lib/catalog-images";
 import { getCatalogProducts, type CatalogProduct } from "@/lib/api";
 
 const categoryConfig: Record<string, { title: string; type: string; description: string }> = {
@@ -25,23 +25,12 @@ function identity(product: Pick<CatalogProduct, "name" | "game" | "category">) {
   return `${product.name} ${product.game} ${product.category ?? ""}`.toLowerCase();
 }
 
-function fallbackImage(product: CatalogProduct) {
-  return catalogFallbackImage(product);
-}
-
 function productImage(product: CatalogProduct) {
   return resolveCatalogImage(product);
 }
 
-function preventBrokenImage(event: SyntheticEvent<HTMLImageElement>, fallback: string) {
-  const image = event.currentTarget;
-
-  if (image.dataset.fallbackApplied === "true") {
-    return;
-  }
-
-  image.dataset.fallbackApplied = "true";
-  image.src = fallback;
+function preventBrokenImage(event: SyntheticEvent<HTMLImageElement>) {
+  event.currentTarget.closest("a")?.remove();
 }
 
 function productPrice(
@@ -81,6 +70,7 @@ export default function CategoryPage() {
   const searchParams = useSearchParams();
   const fallbackConfig = categoryConfig[params.slug] ?? { title: "Catalogue", type: params.slug, description: "Produits disponibles sur Astral4Gamer." };
   const config = translateCategoryConfig(params.slug, language, fallbackConfig);
+  const isGameKeysPage = config.type === "game-key";
   const labels = language === "fr" ? {
     home: "Accueil",
     shop: "Boutique",
@@ -131,9 +121,10 @@ export default function CategoryPage() {
       getCatalogProducts(productsPerPage, { category: config.type || undefined, q: query.trim() || undefined, page })
         .then((payload) => {
           if (!cancelled) {
-            setProducts(payload.data);
+            const visibleProducts = payload.data.filter(hasCatalogProductImage);
+            setProducts(visibleProducts);
             setLastPage(payload.meta?.last_page ?? 1);
-            setTotal(payload.meta?.total ?? payload.data.length);
+            setTotal(visibleProducts.length);
           }
         })
         .catch(() => {
@@ -214,27 +205,25 @@ export default function CategoryPage() {
         </div>
 
         {loading ? (
-          <div className="mt-5 grid grid-cols-3 gap-x-2 gap-y-4 sm:gap-x-3 sm:gap-y-5 md:mt-9 md:grid-cols-4 md:gap-x-5 md:gap-y-8 xl:grid-cols-6">
+          <div className={`mt-5 grid grid-cols-3 gap-x-2 gap-y-4 sm:gap-x-3 sm:gap-y-5 md:mt-9 md:grid-cols-4 md:gap-x-5 md:gap-y-8 ${isGameKeysPage ? "xl:grid-cols-5" : "xl:grid-cols-6"}`}>
             {Array.from({ length: 18 }).map((_, index) => (
               <div key={index} className="min-w-0 rounded-lg bg-white p-1.5 shadow-[0_6px_18px_rgba(17,24,39,.05)] md:rounded-xl md:p-3">
-                <div className="aspect-square animate-pulse rounded-md bg-[#eef1f5] md:rounded-lg" />
+                <div className={`${isGameKeysPage ? "aspect-[4/3]" : "aspect-square"} animate-pulse rounded-md bg-[#eef1f5] md:rounded-lg`} />
                 <div className="mt-2 h-8 animate-pulse rounded bg-[#eef1f5] md:mt-3 md:h-10" />
                 <div className="ml-auto mt-2 h-3 w-16 animate-pulse rounded bg-[#eef1f5]" />
               </div>
             ))}
           </div>
         ) : sortedProducts.length ? (
-          <div className="mt-5 grid grid-cols-3 gap-x-2 gap-y-4 sm:gap-x-3 sm:gap-y-5 md:mt-9 md:grid-cols-4 md:gap-x-5 md:gap-y-8 xl:grid-cols-6">
+          <div className={`mt-5 grid grid-cols-3 gap-x-2 gap-y-4 sm:gap-x-3 sm:gap-y-5 md:mt-9 md:grid-cols-4 md:gap-x-5 md:gap-y-8 ${isGameKeysPage ? "xl:grid-cols-5" : "xl:grid-cols-6"}`}>
             {sortedProducts.map((product) => {
-              const fallback = fallbackImage(product);
-
               return (
-                <a href={`/product/${product.id}`} key={product.id} className="min-w-0 rounded-lg bg-white p-1.5 shadow-[0_6px_18px_rgba(17,24,39,.05)] transition hover:-translate-y-1 md:rounded-xl md:p-3 md:shadow-[0_8px_24px_rgba(17,24,39,.05)]">
-                  <div className="relative aspect-square overflow-hidden rounded-md bg-[#f8fafc] md:rounded-lg">
-                    <img src={productImage(product)} alt={product.name} onError={(event) => preventBrokenImage(event, fallback)} className="h-full w-full object-contain p-2" />
+                <a href={`/product/${product.id}`} key={product.id} className="min-w-0 rounded-lg bg-white p-1 shadow-[0_6px_18px_rgba(17,24,39,.05)] transition hover:-translate-y-1 md:rounded-xl md:p-2 md:shadow-[0_8px_24px_rgba(17,24,39,.05)]">
+                  <div className="relative aspect-[4/5] overflow-hidden rounded-md bg-[#f8fafc] md:rounded-lg">
+                    <img src={productImage(product)} alt={product.name} onError={preventBrokenImage} className="h-full w-full scale-[1.03] object-cover" loading="lazy" decoding="async" />
                   </div>
-                  <h2 className="mt-2 line-clamp-2 min-h-[32px] break-words text-[11px] font-black leading-4 text-[#004bd6] md:mt-3 md:min-h-[44px] md:text-sm md:leading-5">{product.name}</h2>
-                  <p className="mt-1 truncate text-right text-[10px] font-medium md:mt-2 md:text-sm">{productPrice(product, language, formatMoney)}</p>
+                  <h2 className="mt-2 line-clamp-2 min-h-[32px] break-words text-[11px] font-normal leading-4 text-[#004bd6] md:mt-3 md:min-h-[44px] md:text-sm md:leading-5">{product.name}</h2>
+                  <p className="mt-1 truncate text-right text-[10px] font-normal md:mt-2 md:text-sm">{productPrice(product, language, formatMoney)}</p>
                 </a>
               );
             })}

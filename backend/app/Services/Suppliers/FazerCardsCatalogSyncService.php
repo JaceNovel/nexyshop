@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Shop\PricingService;
+use App\Services\Steam\SteamCatalogImageService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
@@ -14,6 +15,7 @@ class FazerCardsCatalogSyncService
     public function __construct(
         private readonly SupplierManager $manager,
         private readonly PricingService $pricing,
+        private readonly SteamCatalogImageService $steamImages,
     ) {
     }
 
@@ -430,6 +432,14 @@ class FazerCardsCatalogSyncService
 
         if ($this->isUsableImage($incoming)) {
             return $incoming;
+        }
+
+        if ($type === 'game-key') {
+            $steamImage = $this->steamImages->imageForGame($name);
+
+            if ($this->isUsableImage($steamImage)) {
+                return $steamImage;
+            }
         }
 
         $existingImage = $this->absoluteImage(Arr::get($existing?->metadata ?? [], 'image_url'));

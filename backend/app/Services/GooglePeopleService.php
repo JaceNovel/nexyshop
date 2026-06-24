@@ -100,14 +100,25 @@ class GooglePeopleService
             ->orWhere('email', $googleProfile['email'])
             ->first();
 
+        $avatarUrl = $googleProfile['avatar_url'] ?? null;
+        $shouldUseGoogleAvatar = $avatarUrl && (
+            ! $user
+            || ! $user->avatar_url
+            || $user->avatar_url === $user->google_avatar_url
+        );
+
         $userData = [
             'name' => $googleProfile['name'],
             'email' => $googleProfile['email'],
             'google_id' => $googleProfile['google_id'],
-            'google_avatar_url' => $googleProfile['avatar_url'],
+            'google_avatar_url' => $avatarUrl,
             'google_connected_at' => now(),
             'last_login_at' => now(),
         ];
+
+        if ($shouldUseGoogleAvatar) {
+            $userData['avatar_url'] = $avatarUrl;
+        }
 
         if ($user) {
             $user->update($userData);

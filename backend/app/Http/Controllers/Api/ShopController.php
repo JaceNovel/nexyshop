@@ -20,7 +20,7 @@ use Illuminate\Http\Request;
 
 class ShopController extends Controller
 {
-    private const HIDDEN_PUBLIC_TYPES = ['game-key', 'game-keys'];
+    private const HIDDEN_PUBLIC_TYPES = [];
 
     public function __construct(private readonly PricingService $pricing)
     {
@@ -182,14 +182,13 @@ class ShopController extends Controller
 
         $product = Product::with('supplierProducts')->findOrFail($data['product_id']);
         $quantity = (int) ($data['quantity'] ?? 1);
-        $manualVariation = $this->selectedManualVariation($product, $data['variation_id'] ?? null);
-        $supplierProduct = $manualVariation ? null : $this->selectedSupplierProduct($product, $data['variation_id'] ?? null);
-        $supplierCost = $manualVariation
-            ? (float) ($manualVariation['price'] ?? 0)
-            : (float) ($supplierProduct?->cost ?: $product->price);
-        $unitPrice = $manualVariation
-            ? (float) ($manualVariation['price'] ?? 0)
-            : $this->promoPrice($product, $this->pricing->retailPrice($supplierCost));
+        $checkoutPricing = $this->resolveCheckoutPricing($product, $data['variation_id'] ?? null);
+        $manualVariation = $checkoutPricing['manual_variation'];
+        $supplierProduct = $checkoutPricing['supplier_product'];
+        $publicVariation = $checkoutPricing['public_variation'];
+        $supplierCost = $checkoutPricing['supplier_cost'];
+        $unitPrice = $checkoutPricing['unit_price'];
+        $unitCurrency = $checkoutPricing['currency'];
 
         $order = Order::create([
             'product_id' => $data['product_id'],
@@ -197,15 +196,17 @@ class ShopController extends Controller
             'nickname' => $data['nickname'],
             'user_id' => $request->user()->id,
             'amount' => $unitPrice * $quantity,
-            'currency' => $product->currency,
+            'currency' => $unitCurrency,
             'status' => 'pending_payment',
             'metadata' => [
-                'variation_id' => $manualVariation['variation_id'] ?? $supplierProduct?->external_sku,
-                'variation_name' => $manualVariation['name'] ?? $supplierProduct?->metadata['name'] ?? null,
+                'variation_id' => $manualVariation['variation_id'] ?? $supplierProduct?->external_sku ?? ($publicVariation['variation_id'] ?? null),
+                'variation_name' => $manualVariation['name'] ?? $supplierProduct?->metadata['name'] ?? ($publicVariation['name'] ?? null),
                 'supplier' => $product->metadata['supplier'] ?? 'manual',
                 'quantity' => $quantity,
                 'supplier_cost' => $supplierCost,
                 'margin_amount' => $unitPrice - $supplierCost,
+                'display_unit_price' => $unitPrice,
+                'display_currency' => $unitCurrency,
                 'promotion' => $this->activePromotion($product),
                 'manual_fulfillment' => (bool) ($product->metadata['manual_fulfillment'] ?? false),
                 'fulfillment_status' => (bool) ($product->metadata['manual_fulfillment'] ?? false) ? 'awaiting_payment' : null,
@@ -233,31 +234,32 @@ class ShopController extends Controller
 
         $product = Product::with('supplierProducts')->findOrFail($data['product_id']);
         $quantity = (int) ($data['quantity'] ?? 1);
-        $manualVariation = $this->selectedManualVariation($product, $data['variation_id'] ?? null);
-        $supplierProduct = $manualVariation ? null : $this->selectedSupplierProduct($product, $data['variation_id'] ?? null);
-        $supplierCost = $manualVariation
-            ? (float) ($manualVariation['price'] ?? 0)
-            : (float) ($supplierProduct?->cost ?: $product->price);
-        $unitPrice = $manualVariation
-            ? (float) ($manualVariation['price'] ?? 0)
-            : $this->promoPrice($product, $this->pricing->retailPrice($supplierCost));
+        $checkoutPricing = $this->resolveCheckoutPricing($product, $data['variation_id'] ?? null);
+        $manualVariation = $checkoutPricing['manual_variation'];
+        $supplierProduct = $checkoutPricing['supplier_product'];
+        $publicVariation = $checkoutPricing['public_variation'];
+        $supplierCost = $checkoutPricing['supplier_cost'];
+        $unitPrice = $checkoutPricing['unit_price'];
+        $unitCurrency = $checkoutPricing['currency'];
 
         $order = Order::create([
             'product_id' => $product->id,
             'game_uid' => $data['game_uid'],
             'nickname' => $data['nickname'],
             'amount' => $unitPrice * $quantity,
-            'currency' => $product->currency,
+            'currency' => $unitCurrency,
             'status' => 'pending_payment',
             'metadata' => [
-                'variation_id' => $manualVariation['variation_id'] ?? $supplierProduct?->external_sku,
-                'variation_name' => $manualVariation['name'] ?? $supplierProduct?->metadata['name'] ?? null,
+                'variation_id' => $manualVariation['variation_id'] ?? $supplierProduct?->external_sku ?? ($publicVariation['variation_id'] ?? null),
+                'variation_name' => $manualVariation['name'] ?? $supplierProduct?->metadata['name'] ?? ($publicVariation['name'] ?? null),
                 'supplier' => $product->metadata['supplier'] ?? 'manual',
                 'checkout_mode' => 'guest',
                 'payment_pending' => true,
                 'quantity' => $quantity,
                 'supplier_cost' => $supplierCost,
                 'margin_amount' => $unitPrice - $supplierCost,
+                'display_unit_price' => $unitPrice,
+                'display_currency' => $unitCurrency,
                 'promotion' => $this->activePromotion($product),
                 'manual_fulfillment' => (bool) ($product->metadata['manual_fulfillment'] ?? false),
                 'fulfillment_status' => (bool) ($product->metadata['manual_fulfillment'] ?? false) ? 'awaiting_payment' : null,
@@ -320,6 +322,53 @@ class ShopController extends Controller
             ['slug' => 'fazercards'],
             ['name' => 'FazerCards', 'base_url' => config('services.suppliers.fazercards.base_url'), 'active' => true, 'priority' => 1]
         );
+    }
+
+    private function resolveCheckoutPricing(Product $product, ?string $variationId): array
+    {
+        $publicVariation = $this->selectedPublicVariation($product, $variationId);
+        $selectedVariationId = (string) ($publicVariation['variation_id'] ?? $variationId ?? '');
+        $manualVariation = $this->selectedManualVariation($product, $selectedVariationId ?: $variationId);
+        $supplierProduct = $manualVariation ? null : $this->selectedSupplierProduct($product, $selectedVariationId ?: $variationId);
+        $supplierCost = $manualVariation
+            ? (float) ($manualVariation['price'] ?? 0)
+            : (float) ($supplierProduct?->cost ?: $product->price);
+        $unitPrice = (float) ($publicVariation['price'] ?? 0);
+
+        if ($unitPrice <= 0) {
+            $unitPrice = $manualVariation
+                ? (float) ($manualVariation['price'] ?? 0)
+                : $this->promoPrice($product, $this->pricing->retailPrice($supplierCost));
+        }
+
+        return [
+            'public_variation' => $publicVariation,
+            'manual_variation' => $manualVariation,
+            'supplier_product' => $supplierProduct,
+            'supplier_cost' => $supplierCost,
+            'unit_price' => round($unitPrice, 2),
+            'currency' => (string) ($publicVariation['currency'] ?? $product->currency),
+        ];
+    }
+
+    private function selectedPublicVariation(Product $product, ?string $variationId): ?array
+    {
+        $variations = collect($this->serializeProduct($product)['variations'] ?? []);
+
+        if ($variations->isEmpty()) {
+            return null;
+        }
+
+        if ($variationId) {
+            $selected = $variations->first(fn ($variation) => (string) ($variation['variation_id'] ?? '') === (string) $variationId
+                || (string) ($variation['id'] ?? '') === (string) $variationId);
+
+            if ($selected) {
+                return $selected;
+            }
+        }
+
+        return $variations->first();
     }
 
     private function serializeProduct(Product $product): array

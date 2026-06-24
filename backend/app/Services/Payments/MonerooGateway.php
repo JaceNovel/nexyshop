@@ -39,7 +39,11 @@ class MonerooGateway implements PaymentGateway
 
     public function verifyWebhook(array $payload): array
     {
-        $paymentId = data_get($payload, 'data.id');
+        $paymentId = data_get($payload, 'data.id')
+            ?: data_get($payload, 'id')
+            ?: data_get($payload, 'payment_id')
+            ?: data_get($payload, 'paymentId')
+            ?: data_get($payload, 'reference');
 
         if (! $paymentId) {
             return [
@@ -67,7 +71,7 @@ class MonerooGateway implements PaymentGateway
 
         return [
             'reference' => $data['id'] ?? $paymentId,
-            'status' => $data['status'] ?? 'pending',
+            'status' => $this->normalizeStatus($data['status'] ?? 'pending'),
             'amount' => $data['amount'] ?? null,
             'currency' => data_get($data, 'currency.code'),
             'raw' => $response->json(),
@@ -110,18 +114,11 @@ class MonerooGateway implements PaymentGateway
 
     private function normalizePayload(array $payload): array
     {
-        if (isset($payload['amount']) && is_numeric($payload['amount'])) {
-            $originalAmount = (float) $payload['amount'];
-            $monerooAmount = (int) max(1, ceil($originalAmount));
-            $payload['amount'] = $monerooAmount;
-
-            if (abs($originalAmount - $monerooAmount) > 0.00001) {
-                $payload['metadata'] = $payload['metadata'] ?? [];
-                $payload['metadata']['astral_original_amount'] = number_format($originalAmount, 2, '.', '');
-            }
-        }
-
         $payload['currency'] = $this->resolveCurrency($payload['currency'] ?? null);
+
+        if (isset($payload['amount']) && is_numeric($payload['amount'])) {
+            $payload['amount'] = $this->normalizeAmount($payload['amount'], $payload['currency']);
+        }
 
         if (isset($payload['methods']) && is_array($payload['methods'])) {
             $payload['methods'] = $this->expandMethodAliases($payload['methods'], $payload['currency']);
@@ -258,6 +255,31 @@ class MonerooGateway implements PaymentGateway
         }
 
         return strtoupper((string) config('services.payments.moneroo.default_currency', 'USD'));
+    }
+
+    private function normalizeAmount(mixed $amount, string $currency): int|float
+    {
+        $amount = max(0, (float) $amount);
+        $zeroDecimalCurrencies = ['XOF', 'XAF', 'GNF', 'RWF', 'BIF', 'UGX', 'JPY'];
+
+        if (in_array(strtoupper($currency), $zeroDecimalCurrencies, true)) {
+            return max(1, (int) round($amount));
+        }
+
+        return (float) number_format(max(0.01, $amount), 2, '.', '');
+    }
+
+    private function normalizeStatus(mixed $status): string
+    {
+        $status = strtolower(trim((string) $status));
+
+        return match ($status) {
+            'success', 'successful', 'succeeded', 'paid', 'completed', 'complete' => 'success',
+            'cancelled', 'canceled' => 'cancelled',
+            'failed', 'failure', 'error', 'declined' => 'failed',
+            'initiated', 'processing', 'pending' => 'pending',
+            default => $status !== '' ? $status : 'pending',
+        };
     }
 
     private function ensureConfigured(): void

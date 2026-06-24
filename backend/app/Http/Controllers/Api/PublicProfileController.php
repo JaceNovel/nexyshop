@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\CallOfDuty\CallOfDutyApiService;
-use App\Services\FreeFire\HlGamingFreeFireService;
+use App\Services\FreeFire\FreeFireLookupService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
@@ -113,7 +113,7 @@ class PublicProfileController extends Controller
         ]));
     }
 
-    public function show(string $username, HlGamingFreeFireService $freeFire)
+    public function show(string $username, FreeFireLookupService $freeFire)
     {
         $user = User::query()->where('username', $username)->first();
 
@@ -162,7 +162,7 @@ class PublicProfileController extends Controller
         return response()->json($payload);
     }
 
-    private function freeFireProfile(User $user, HlGamingFreeFireService $freeFire): ?array
+    private function freeFireProfile(User $user, FreeFireLookupService $freeFire): ?array
     {
         if (! $this->isFreeFireProfile($user) || blank($user->player_uid)) {
             return null;
@@ -293,7 +293,7 @@ class PublicProfileController extends Controller
 
         return in_array($candidate, $supported, true)
             ? $candidate
-            : mb_strtolower((string) config('services.hlgaming.freefire.default_region', 'me'));
+            : mb_strtolower((string) config('services.freefire.lookup.default_region', 'me'));
     }
 
     private function formatFreeFireRank(mixed $rank): ?string

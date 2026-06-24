@@ -17,6 +17,7 @@ use App\Services\Video\FfmpegService;
 use App\Services\Video\YouTubeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AdminVideoController extends Controller
@@ -24,15 +25,27 @@ class AdminVideoController extends Controller
     public function youtubeStatus()
     {
         $account = YoutubeAccount::query()->latest()->first();
+        $callbackUrl = (string) config('services.youtube.redirect_uri');
 
         return response()->json([
             'connected' => (bool) $account,
             'account' => $account?->only(['id', 'channel_id', 'channel_title', 'token_expires_at', 'status']),
+            'oauth' => [
+                'client_configured' => filled(config('services.youtube.client_id')) && filled(config('services.youtube.client_secret')),
+                'callback_url' => $callbackUrl ?: null,
+                'ready' => filled(config('services.youtube.client_id'))
+                    && filled(config('services.youtube.client_secret'))
+                    && filled($callbackUrl),
+            ],
         ]);
     }
 
     public function youtubeRedirect(Request $request, YouTubeService $youtube)
     {
+        abort_unless(filled(config('services.youtube.client_id')), 422, 'Client OAuth YouTube manquant.');
+        abort_unless(filled(config('services.youtube.client_secret')), 422, 'Secret OAuth YouTube manquant.');
+        abort_unless(filled(config('services.youtube.redirect_uri')), 422, 'URL de retour OAuth YouTube manquante.');
+
         $state = Str::random(48);
         Cache::put('youtube_oauth_state:'.$state, $request->user()?->id, now()->addMinutes(10));
 
@@ -41,17 +54,40 @@ class AdminVideoController extends Controller
 
     public function youtubeCallback(Request $request, YouTubeService $youtube)
     {
-        $request->validate(['code' => ['required', 'string'], 'state' => ['required', 'string']]);
+        $frontendUrl = rtrim((string) config('services.google.frontend_url'), '/');
+        $adminVideoUrl = $frontendUrl.'/admin/video';
 
-        $cacheKey = 'youtube_oauth_state:'.$request->state;
-        abort_unless(Cache::has($cacheKey), 419, 'OAuth state invalide ou expire.');
+        try {
+            $request->validate(['code' => ['required', 'string'], 'state' => ['required', 'string']]);
 
-        $account = $youtube->exchangeCode($request->code, Cache::pull($cacheKey));
+            $cacheKey = 'youtube_oauth_state:'.$request->state;
+            if (! Cache::has($cacheKey)) {
+                return redirect()->away($adminVideoUrl.'?youtube_error='.urlencode('Session YouTube expiree. Relance la connexion.'));
+            }
 
-        return response()->json([
-            'message' => 'Compte YouTube connecte.',
-            'account' => $account->only(['id', 'channel_id', 'channel_title', 'token_expires_at', 'status']),
-        ]);
+            $account = $youtube->exchangeCode($request->code, Cache::pull($cacheKey));
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Compte YouTube connecte.',
+                    'account' => $account->only(['id', 'channel_id', 'channel_title', 'token_expires_at', 'status']),
+                ]);
+            }
+
+            return redirect()->away($adminVideoUrl.'?youtube=connected');
+        } catch (\Throwable $exception) {
+            Log::error('YouTube OAuth callback failed', [
+                'message' => $exception->getMessage(),
+                'status' => method_exists($exception, 'response') && $exception->response ? $exception->response->status() : null,
+                'response' => method_exists($exception, 'response') && $exception->response ? $exception->response->json() : null,
+            ]);
+
+            if ($request->expectsJson()) {
+                throw $exception;
+            }
+
+            return redirect()->away($adminVideoUrl.'?youtube_error='.urlencode('Connexion YouTube impossible. Verifie les secrets OAuth cote serveur puis reessaie.'));
+        }
     }
 
     public function createLive(

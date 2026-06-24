@@ -11,6 +11,22 @@ const heroImage = "/signup-hero.png";
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const adminEmail = "adminpanel@astral.com";
 
+function authRedirectTarget() {
+  if (typeof window === "undefined") return "/";
+
+  const target = new URLSearchParams(window.location.search).get("redirect_url");
+
+  if (!target?.startsWith("/") || target.startsWith("//")) return "/";
+
+  return target;
+}
+
+function authPageLink(path: "/connexion" | "/inscription") {
+  const target = authRedirectTarget();
+
+  return target === "/" ? path : `${path}?redirect_url=${encodeURIComponent(target)}`;
+}
+
 export default function ConnexionPage() {
   const { signIn, setActive } = useSignIn();
   const [identifier, setIdentifier] = useState("");
@@ -72,7 +88,7 @@ export default function ConnexionPage() {
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        window.location.href = "/";
+        window.location.href = authRedirectTarget();
         return;
       }
 
@@ -101,7 +117,7 @@ export default function ConnexionPage() {
       await signIn.authenticateWithRedirect({
         strategy,
         redirectUrl: "/sso-callback",
-        redirectUrlComplete: "/profil"
+        redirectUrlComplete: authRedirectTarget()
       });
     } catch (requestError) {
       setError(getClerkError(requestError));
@@ -143,7 +159,7 @@ export default function ConnexionPage() {
           </a>
           <div className="flex items-center gap-3 text-[12px] font-medium text-[#111827]">
             <span className="hidden sm:inline">Pas encore de compte ?</span>
-            <a href="/inscription" className="inline-flex h-9 items-center justify-center rounded-lg border border-[#ff2334] px-4 text-[12px] font-black text-[#ff1f2f] transition hover:bg-[#ff1f2f] hover:text-white">
+            <a href={authPageLink("/inscription")} className="inline-flex h-9 items-center justify-center rounded-lg border border-[#ff2334] px-4 text-[12px] font-black text-[#ff1f2f] transition hover:bg-[#ff1f2f] hover:text-white">
               Créer un compte
             </a>
           </div>

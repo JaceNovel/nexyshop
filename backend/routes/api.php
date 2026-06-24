@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\AdminVideoController;
 use App\Http\Controllers\Api\BlogPostController;
 use App\Http\Controllers\Api\CommunityController;
 use App\Http\Controllers\Api\DiamondDuelController;
+use App\Http\Controllers\Api\FazerCardsWebhookController;
 use App\Http\Controllers\Api\FreeFireController;
 use App\Http\Controllers\Api\FortniteController;
 use App\Http\Controllers\Api\GenshinImpactController;
@@ -54,7 +55,9 @@ Route::middleware(['api', 'throttle:api'])->group(function () {
     Route::post('/bot/partnership-approvals/{partnershipRequest}/notified', [PartnershipController::class, 'markBotNotified'])->middleware('throttle:api');
     Route::post('/payments/moneroo/initiate', [PaymentController::class, 'initiateGuest']);
     Route::get('/payments/moneroo/return', [PaymentController::class, 'monerooReturn']);
+    Route::get('/payments/moneroo/status', [PaymentController::class, 'monerooStatus']);
     Route::post('/payments/webhook/{provider}', [PaymentController::class, 'webhook'])->middleware('signed.webhook');
+    Route::post('/suppliers/fazercards/webhook', FazerCardsWebhookController::class)->middleware('throttle:api');
     Route::post('/player/verify', [PlayerController::class, 'verify'])->middleware('throttle:uid');
     Route::post('/freefire/validate', [FreeFireController::class, 'validateUid'])->middleware('throttle:uid');
     Route::post('/freefire/profile', [FreeFireController::class, 'profile'])->middleware('throttle:uid');
@@ -134,6 +137,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/missions/{mission}/claim', [MissionController::class, 'claim']);
     Route::post('/user/freefire/profile-refresh', [FreeFireController::class, 'requestProfileRefresh'])->middleware('throttle:uid');
     Route::get('/user/google-profile', [GoogleAuthController::class, 'profile']);
+    Route::post('/user/google-avatar-sync', [GoogleAuthController::class, 'syncAvatar']);
     Route::get('/user/steam/redirect', [SteamController::class, 'redirect']);
     Route::get('/user/steam-profile', [SteamController::class, 'me']);
     Route::get('/user/astral-mails', [UserMailboxController::class, 'index']);
@@ -145,6 +149,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/diamond-duels/{duel}/decline', [DiamondDuelController::class, 'decline'])->middleware('throttle:uid');
     Route::delete('/user/google-disconnect', [GoogleAuthController::class, 'disconnect']);
 });
+
+Route::get('/admin/youtube/callback', [AdminVideoController::class, 'youtubeCallback']);
 
 Route::middleware(['auth:sanctum', 'can:admin'])->prefix('admin')->group(function () {
     Route::apiResource('tournaments', TournamentController::class)->except(['index', 'show']);
@@ -180,9 +186,13 @@ Route::middleware(['auth:sanctum', 'can:admin'])->prefix('admin')->group(functio
     Route::post('/blog-posts/generate-weekly-summary', [AdminBlogPostController::class, 'generateWeeklySummary']);
     Route::get('/youtube/status', [AdminVideoController::class, 'youtubeStatus']);
     Route::get('/youtube/redirect', [AdminVideoController::class, 'youtubeRedirect']);
-    Route::get('/youtube/callback', [AdminVideoController::class, 'youtubeCallback']);
     Route::post('/youtube/lives', [AdminVideoController::class, 'createLive']);
     Route::post('/youtube/videos/sync', [AdminVideoController::class, 'syncVideo']);
+    Route::get('/live-sessions', [LiveController::class, 'adminIndex']);
+    Route::post('/live-sessions', [LiveController::class, 'adminStore']);
+    Route::patch('/live-sessions/{stream}', [LiveController::class, 'adminUpdate']);
+    Route::post('/live-sessions/{stream}/sync-teams', [LiveController::class, 'adminSyncTeams']);
+    Route::patch('/live-sessions/{stream}/teams/{team}', [LiveController::class, 'adminUpdateTeam']);
     Route::post('/streams/{stream}/status', [AdminVideoController::class, 'updateStreamStatus']);
     Route::post('/replays/{replay}/analyze', [AdminVideoController::class, 'analyzeReplay']);
     Route::patch('/replay-moments/{moment}', [AdminVideoController::class, 'updateMoment']);

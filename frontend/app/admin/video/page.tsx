@@ -5,7 +5,11 @@ import { AlertTriangle, Radio, RefreshCw, Settings, Video } from "lucide-react";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { API_BASE_URL } from "@/lib/api";
 
-type YoutubeStatus = { connected: boolean; account?: { channel_title?: string; channel_id?: string; status?: string; token_expires_at?: string } | null };
+type YoutubeStatus = {
+  connected: boolean;
+  account?: { channel_title?: string; channel_id?: string; status?: string; token_expires_at?: string } | null;
+  oauth?: { client_configured?: boolean; callback_url?: string | null; ready?: boolean };
+};
 
 export default function AdminVideoPage() {
   const [status, setStatus] = useState<YoutubeStatus | null>(null);
@@ -25,7 +29,8 @@ export default function AdminVideoPage() {
       if (response.status === 401 || response.status === 403) { window.location.href = "/admin/login"; return; }
       if (!response.ok) throw new Error("Impossible de verifier YouTube.");
       setStatus(await response.json());
-      setMessage("");
+      const params = new URLSearchParams(window.location.search);
+      if (!params.get("youtube") && !params.get("youtube_error")) setMessage("");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Chargement impossible."); }
     finally { setLoading(false); }
   }
@@ -40,7 +45,14 @@ export default function AdminVideoPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Connexion impossible."); setLoading(false); }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const youtubeError = params.get("youtube_error");
+    const youtubeConnected = params.get("youtube");
+    if (youtubeError) setMessage(youtubeError);
+    if (youtubeConnected === "connected") setMessage("Compte YouTube connecte.");
+    void load();
+  }, []);
 
   return <AdminShell title="Video & lives" subtitle="Pilotage reel de YouTube, OBS et des contenus video.">
     {message ? <div className="mb-5 rounded-lg border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">{message}</div> : null}
@@ -50,6 +62,11 @@ export default function AdminVideoPage() {
         <h2 className="mt-4 text-lg font-semibold">Connexion YouTube</h2>
         <p className="mt-2 text-sm text-slate-400">{status?.connected ? `Chaine connectee: ${status.account?.channel_title ?? status.account?.channel_id ?? "YouTube"}` : "Aucune chaine YouTube connectee au backend."}</p>
         <span className={`mt-4 inline-flex rounded-full px-3 py-1 text-xs ${status?.connected ? "bg-emerald-400/10 text-emerald-300" : "bg-red-400/10 text-red-300"}`}>{status?.connected ? "Connecte" : "Non connecte"}</span>
+        {status?.oauth?.callback_url ? <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">URL a autoriser dans Google Cloud</p>
+          <code className="mt-2 block break-all rounded-md bg-black/25 px-3 py-2 text-xs text-slate-200">{status.oauth.callback_url}</code>
+        </div> : null}
+        {status && !status.oauth?.ready ? <p className="mt-3 rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">Configuration OAuth YouTube incomplete dans le backend.</p> : null}
         <button onClick={() => void connectYoutube()} disabled={loading} className="mt-5 block h-10 rounded-lg bg-violet-600 px-4 text-xs font-semibold disabled:opacity-50">{status?.connected ? "Reconnecter YouTube" : "Connecter YouTube"}</button>
       </section>
 

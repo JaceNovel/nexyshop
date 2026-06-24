@@ -27,7 +27,7 @@ class GoogleAuthController extends Controller
             return redirect()->away($frontendUrl.'/auth/google/callback?'.http_build_query([
                 'token' => $result['token'],
                 'name' => $result['user']->name,
-                'avatar' => $result['user']->google_avatar_url,
+                'avatar' => $result['user']->avatar_url ?: $result['user']->google_avatar_url,
             ]));
         } catch (\Throwable $exception) {
             Log::error('Google OAuth callback failed', ['message' => $exception->getMessage()]);
@@ -60,5 +60,45 @@ class GoogleAuthController extends Controller
         $google->disconnectGoogle($request->user());
 
         return response()->json(['message' => 'Compte Google deconnecte.']);
+    }
+
+    public function syncAvatar(Request $request)
+    {
+        $data = $request->validate([
+            'avatar_url' => ['required', 'url', 'max:2048'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'clerk_id' => ['nullable', 'string', 'max:255'],
+            'source' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $user = $request->user();
+        $oldGoogleAvatar = $user->google_avatar_url;
+        $updates = [
+            'google_avatar_url' => $data['avatar_url'],
+            'google_connected_at' => $user->google_connected_at ?: now(),
+            'last_login_at' => now(),
+        ];
+
+        if (! empty($data['name']) && (! $user->name || str_starts_with($user->name, 'user_'))) {
+            $updates['name'] = $data['name'];
+        }
+
+        if (! $user->avatar_url || $user->avatar_url === $oldGoogleAvatar) {
+            $updates['avatar_url'] = $data['avatar_url'];
+        }
+
+        $user->forceFill($updates)->save();
+
+        return response()->json([
+            'message' => 'Profil synchronise.',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'avatar_url' => $user->avatar_url,
+                'google_avatar_url' => $user->google_avatar_url,
+            ],
+        ]);
     }
 }

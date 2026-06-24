@@ -1,10 +1,12 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
 import { Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import { useCart } from "@/components/cart-provider";
 import { useLanguage } from "@/components/language-provider";
 
 export function CartDrawer() {
+  const { isLoaded, user } = useUser();
   const { items, isOpen, closeCart, removeItem, updateQuantity, clearCart } = useCart();
   const { language, currency, formatMoney, convertMoney } = useLanguage();
   const labels = language === "fr" ? {
@@ -35,6 +37,18 @@ export function CartDrawer() {
 
   const total = items.reduce((result, item) => result + convertMoney(item.unitPrice * item.quantity, item.currency), 0);
 
+  function requireCustomerSession(target: string) {
+    if (!isLoaded) return false;
+
+    if (!user?.id) {
+      closeCart();
+      window.location.href = `/connexion?redirect=${encodeURIComponent(target)}`;
+      return false;
+    }
+
+    return true;
+  }
+
   return (
     <div className="fixed inset-0 z-[150] bg-black/45 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label={labels.title} onClick={closeCart}>
       <aside className="ml-auto flex h-[100dvh] w-full max-w-[430px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,.22)]" onClick={(event) => event.stopPropagation()}>
@@ -59,6 +73,7 @@ export function CartDrawer() {
                   quantity: String(item.quantity),
                   checkout: "1"
                 });
+                const checkoutHref = `/product/${item.productId}?${params}`;
 
                 return (
                   <article key={item.key} className="rounded-lg border border-[#e7eaf0] bg-white p-3 shadow-[0_8px_22px_rgba(16,24,40,.05)]">
@@ -79,7 +94,18 @@ export function CartDrawer() {
                         <span className="min-w-7 text-center text-sm font-bold">{item.quantity}</span>
                         <button type="button" onClick={() => updateQuantity(item.key, item.quantity + 1)} className="interactive-icon grid h-10 w-10 place-items-center" aria-label="+"><Plus className="h-4 w-4" /></button>
                       </div>
-                      <a href={`/product/${item.productId}?${params}`} onClick={closeCart} className="interactive-button inline-flex min-h-10 flex-1 items-center justify-center rounded-lg bg-[#0b55d9] px-3 text-center text-xs font-bold text-white">
+                      <a
+                        href={checkoutHref}
+                        onClick={(event) => {
+                          if (!requireCustomerSession(checkoutHref)) {
+                            event.preventDefault();
+                            return;
+                          }
+
+                          closeCart();
+                        }}
+                        className="interactive-button inline-flex min-h-10 flex-1 items-center justify-center rounded-lg bg-[#0b55d9] px-3 text-center text-xs font-bold text-white"
+                      >
                         {labels.checkout}
                       </a>
                     </div>

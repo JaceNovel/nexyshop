@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLikesQuote } from "@/lib/server/hlgaming-freefire";
+import { getLikesQuote } from "@/lib/server/freefire-lookup";
 
 export async function POST(request: Request) {
   const { uid, region, likes = 100 } = await request.json().catch(() => ({}));

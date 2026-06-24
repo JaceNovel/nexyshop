@@ -5,11 +5,27 @@ import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
 import { useSignUp } from "@clerk/nextjs/legacy";
 import { markDiscordPopupAfterSignup } from "@/components/discord-follow-popup";
-import { getFortniteProfile, getFreeFireProfile, getPubgProfile } from "@/lib/api";
+import { getFortniteProfile, getFreeFireProfile, getPubgProfile, type FreeFireProfile } from "@/lib/api";
 
 const brandLogo = "/ChatGPT_Image_28_mai_2026__20_26_02-removebg-preview.png";
 const heroImage = "/signup-hero.png";
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+function authRedirectTarget() {
+  if (typeof window === "undefined") return "/profil";
+
+  const target = new URLSearchParams(window.location.search).get("redirect_url");
+
+  if (!target?.startsWith("/") || target.startsWith("//")) return "/profil";
+
+  return target;
+}
+
+function authPageLink(path: "/connexion" | "/inscription") {
+  const target = authRedirectTarget();
+
+  return target === "/profil" ? path : `${path}?redirect_url=${encodeURIComponent(target)}`;
+}
 
 const COUNTRY_CODES = [
   "AF", "AX", "AL", "DZ", "AS", "AD", "AO", "AI", "AQ", "AG", "AR", "AM", "AW", "AU", "AT", "AZ",
@@ -152,7 +168,7 @@ export default function InscriptionPage() {
       if (result.status === "complete") {
         markDiscordPopupAfterSignup();
         await setActive({ session: result.createdSessionId });
-        window.location.href = "/profil";
+        window.location.href = authRedirectTarget();
         return;
       }
 
@@ -199,7 +215,7 @@ export default function InscriptionPage() {
       if (result.status === "complete") {
         markDiscordPopupAfterSignup();
         await setActive({ session: result.createdSessionId });
-        window.location.href = "/profil";
+        window.location.href = authRedirectTarget();
         return;
       }
 
@@ -259,7 +275,7 @@ export default function InscriptionPage() {
       await signUp.authenticateWithRedirect({
         strategy,
         redirectUrl: "/sso-callback",
-        redirectUrlComplete: "/profil"
+        redirectUrlComplete: authRedirectTarget()
       });
     } catch (requestError) {
       setError(getClerkError(requestError));
@@ -286,7 +302,7 @@ export default function InscriptionPage() {
           </a>
           <div className="flex items-center gap-3 text-[12px] font-medium text-[#111827]">
             <span className="hidden sm:inline">Déjà un compte ?</span>
-            <a href="/connexion" className="inline-flex h-9 items-center justify-center rounded-lg border border-[#ff8a93] px-4 text-[12px] font-black text-[#ff1f2f] transition hover:bg-[#ff1f2f] hover:text-white">
+            <a href={authPageLink("/connexion")} className="inline-flex h-9 items-center justify-center rounded-lg border border-[#ff8a93] px-4 text-[12px] font-black text-[#ff1f2f] transition hover:bg-[#ff1f2f] hover:text-white">
               Se connecter
             </a>
           </div>
@@ -576,7 +592,7 @@ async function resolveGameMetadata({
   fortniteAccountId: string;
 }) {
   if (favoriteGame === "free_fire") {
-    const profile = await getFreeFireProfile(freeFireUid.trim(), freeFireRegion, { persistAsCurrentUser: true });
+    const profile = await getFreeFireSignupProfile(freeFireUid.trim(), freeFireRegion);
 
     return {
       favorite_game: favoriteGame,
@@ -614,6 +630,53 @@ async function resolveGameMetadata({
     fortnite: profile,
     call_of_duty: null
   };
+}
+
+async function getFreeFireSignupProfile(uid: string, region: string) {
+  try {
+    return await getFreeFireProfile(uid, region, { persistAsCurrentUser: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (!isFreeFireServiceUnavailable(message)) {
+      throw error;
+    }
+
+    return fallbackFreeFireProfile(uid, region);
+  }
+}
+
+function fallbackFreeFireProfile(uid: string, region: string): FreeFireProfile & { lookup_status: "pending"; lookup_message: string } {
+  return {
+    uid,
+    region,
+    nickname: `FreeFire_${uid}`,
+    level: null,
+    likes: null,
+    br_rank_points: null,
+    cs_rank_points: null,
+    rank: { br: null, cs: null, season: null },
+    guild: null,
+    stats: null,
+    avatar_url: null,
+    outfit_url: null,
+    banner_url: null,
+    account: { uid, region, pending_lookup: true },
+    usage: null,
+    fetched_at: Date.now(),
+    lookup_status: "pending",
+    lookup_message: "Profil Free Fire à compléter automatiquement."
+  };
+}
+
+function isFreeFireServiceUnavailable(message: string) {
+  const normalized = message.toLowerCase();
+
+  return normalized.includes("indisponible")
+    || normalized.includes("temporair")
+    || normalized.includes("quota")
+    || normalized.includes("fetch failed")
+    || normalized.includes("network");
 }
 
 function persistGameMetadata(gameMetadata: Awaited<ReturnType<typeof resolveGameMetadata>>) {

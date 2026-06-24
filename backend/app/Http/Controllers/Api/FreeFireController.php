@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\FreeFire\HlGamingFreeFireService;
+use App\Services\FreeFire\FreeFireLookupService;
 use App\Services\FreeFire\RedeemCodeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +12,7 @@ use Throwable;
 
 class FreeFireController extends Controller
 {
-    public function validateUid(Request $request, HlGamingFreeFireService $freeFire): JsonResponse
+    public function validateUid(Request $request, FreeFireLookupService $freeFire): JsonResponse
     {
         $data = $request->validate([
             'uid' => ['required', 'string', 'max:32'],
@@ -23,13 +23,13 @@ class FreeFireController extends Controller
             return response()->json($freeFire->validateUid($data['uid'], $data['region']));
         } catch (RuntimeException $exception) {
             return response()->json([
-                'message' => $exception->getMessage() ?: 'ID Free Fire incorrect.',
+                'message' => $this->publicFreeFireMessage($exception),
                 'verified' => false,
             ], 422);
         }
     }
 
-    public function profile(Request $request, HlGamingFreeFireService $freeFire): JsonResponse
+    public function profile(Request $request, FreeFireLookupService $freeFire): JsonResponse
     {
         $data = $request->validate([
             'uid' => ['required', 'string', 'max:32'],
@@ -39,11 +39,11 @@ class FreeFireController extends Controller
         try {
             return response()->json($freeFire->profile($data['uid'], $data['region']));
         } catch (RuntimeException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+            return response()->json(['message' => $this->publicFreeFireMessage($exception)], 422);
         }
     }
 
-    public function visuals(Request $request, HlGamingFreeFireService $freeFire): JsonResponse
+    public function visuals(Request $request, FreeFireLookupService $freeFire): JsonResponse
     {
         $data = $request->validate([
             'uid' => ['required', 'string', 'max:32'],
@@ -53,7 +53,7 @@ class FreeFireController extends Controller
         return response()->json($freeFire->visuals($data['uid'], $data['region']));
     }
 
-    public function image(Request $request, HlGamingFreeFireService $freeFire): JsonResponse
+    public function image(Request $request, FreeFireLookupService $freeFire): JsonResponse
     {
         $data = $request->validate([
             'img_code' => ['required', 'string', 'max:80'],
@@ -62,12 +62,12 @@ class FreeFireController extends Controller
         return response()->json($freeFire->imageByCode($data['img_code']));
     }
 
-    public function likesQuote(HlGamingFreeFireService $freeFire): JsonResponse
+    public function likesQuote(FreeFireLookupService $freeFire): JsonResponse
     {
         return response()->json($freeFire->likesQuote());
     }
 
-    public function requestLikes(Request $request, HlGamingFreeFireService $freeFire): JsonResponse
+    public function requestLikes(Request $request, FreeFireLookupService $freeFire): JsonResponse
     {
         $data = $request->validate([
             'uid' => ['required', 'string', 'max:32'],
@@ -78,7 +78,7 @@ class FreeFireController extends Controller
         try {
             return response()->json($freeFire->requestLikes($data['uid'], $data['region'], (int) ($data['likes'] ?? 100)));
         } catch (RuntimeException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+            return response()->json(['message' => $this->publicFreeFireMessage($exception)], 422);
         }
     }
 
@@ -130,5 +130,16 @@ class FreeFireController extends Controller
             'message' => 'La mise à jour du profil Free Fire nécessite un paiement de 1$ avant exécution.',
             'uid' => $user?->player_uid,
         ], 402);
+    }
+
+    private function publicFreeFireMessage(RuntimeException $exception): string
+    {
+        $message = $exception->getMessage();
+
+        if (str_contains($message, 'clé') || str_contains($message, 'API')) {
+            return 'Service Free Fire indisponible pour le moment.';
+        }
+
+        return $message ?: 'Service Free Fire indisponible pour le moment.';
     }
 }

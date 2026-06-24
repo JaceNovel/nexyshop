@@ -26,6 +26,8 @@ return [
         'fazercards' => [
             'key' => env('FAZERCARDS_KEY'),
             'base_url' => env('FAZERCARDS_BASE_URL', 'https://api.fzr.cards/api/v2'),
+            'webhook_token' => env('FAZERCARDS_WEBHOOK_TOKEN'),
+            'webhook_signing_secret' => env('FAZERCARDS_WEBHOOK_SIGNING_SECRET'),
             'enabled' => env('FAZERCARDS_ENABLED', true),
             'sync_topups' => env('FAZERCARDS_SYNC_TOPUPS', true),
             'sync_giftcards' => env('FAZERCARDS_SYNC_GIFTCARDS', true),
@@ -54,14 +56,7 @@ return [
         'api_key' => env('HLGAMING_API_KEY'),
         'timeout' => env('HLGAMING_TIMEOUT', 12),
         'freefire' => [
-            'account_endpoint' => env('HLGAMING_FREEFIRE_ACCOUNT_ENDPOINT', 'https://proapis.hlgamingofficial.com/main/games/freefire/account/api'),
-            'validation_endpoint' => env('HLGAMING_FREEFIRE_VALIDATION_ENDPOINT', 'https://proapis.hlgamingofficial.com/main/games/freefire/validation/api'),
-            'meta_endpoint' => env('HLGAMING_FREEFIRE_META_ENDPOINT', 'https://proapis.hlgamingofficial.com/main/games/freefire/meta/api'),
-            'likes_endpoint' => env('HLGAMING_FREEFIRE_LIKES_ENDPOINT'),
             'reward_endpoint' => env('HLGAMING_FREEFIRE_REWARD_ENDPOINT', 'https://proapis.hlgamingofficial.com/main/games/freefire/reward/api'),
-            'default_region' => env('HLGAMING_FREEFIRE_DEFAULT_REGION', 'me'),
-            'likes_daily_limit' => env('FREEFIRE_LIKES_DAILY_LIMIT', 100),
-            'likes_price_xof' => env('FREEFIRE_LIKES_PRICE_XOF', 300),
         ],
         'genshin' => [
             'endpoint' => env('HLGAMING_GENSHIN_ENDPOINT', 'https://apis.hlgamingofficial.com/main/games/genshin/account/api'),
@@ -71,13 +66,15 @@ return [
         ],
     ],
     'freefire' => [
-        'provider' => env('FREEFIRE_PROVIDER', 'gameskinbo'),
-    ],
-    'gameskinbo' => [
-        'api_key' => env('GAMESKINBO_API_KEY'),
-        'timeout' => env('GAMESKINBO_TIMEOUT', 12),
-        'freefire' => [
-            'endpoint' => env('GAMESKINBO_FREEFIRE_ENDPOINT', 'https://api.gameskinbo.com/ff-info/get'),
+        'provider' => env('FREEFIRE_PROVIDER', 'external'),
+        'likes_daily_limit' => env('FREEFIRE_LIKES_DAILY_LIMIT', 100),
+        'likes_price_xof' => env('FREEFIRE_LIKES_PRICE_XOF', 300),
+        'lookup' => [
+            'api_key' => env('FREEFIRE_LOOKUP_API_KEY', env('GAMESKINBO_API_KEY')),
+            'endpoint' => env('FREEFIRE_LOOKUP_ENDPOINT', env('GAMESKINBO_FREEFIRE_ENDPOINT')),
+            'likes_endpoint' => env('FREEFIRE_LOOKUP_LIKES_ENDPOINT', env('GAMESKINBO_FREEFIRE_LIKES_ENDPOINT')),
+            'default_region' => env('FREEFIRE_LOOKUP_DEFAULT_REGION', 'me'),
+            'timeout' => env('FREEFIRE_LOOKUP_TIMEOUT', env('GAMESKINBO_TIMEOUT', 12)),
         ],
     ],
     'callofdutyapi' => [
@@ -127,11 +124,13 @@ return [
             'secret_key' => env('MONEROO_SECRET_KEY'),
             'public_key' => env('MONEROO_PUBLIC_KEY'),
             'webhook_secret' => env('MONEROO_WEBHOOK_SECRET'),
+            'webhook_token' => env('MONEROO_WEBHOOK_TOKEN'),
             'base_url' => env('MONEROO_BASE_URL', 'https://api.moneroo.io'),
             'default_currency' => env('MONEROO_DEFAULT_CURRENCY', 'USD'),
             'default_methods' => array_values(array_filter(array_map('trim', explode(',', (string) env('MONEROO_DEFAULT_METHODS', ''))))),
             'methods_by_currency' => json_decode((string) env('MONEROO_METHODS_BY_CURRENCY', '{}'), true) ?: [],
             'return_url' => env('MONEROO_RETURN_URL', env('APP_BACKEND_URL', env('APP_URL', 'http://localhost:8000')).'/api/payments/moneroo/return'),
+            'webhook_url' => env('MONEROO_WEBHOOK_URL', env('APP_BACKEND_URL', env('APP_URL', 'http://localhost:8000')).'/api/payments/webhook/moneroo'),
             'frontend_return_url' => env('MONEROO_FRONTEND_RETURN_URL', env('APP_FRONTEND_URL', env('FRONTEND_URL', 'http://localhost:3000')).'/checkout/return'),
         ],
     ],

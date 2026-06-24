@@ -173,7 +173,7 @@ export default function ProfilePage() {
         setSession({
           token: storedToken,
           name: payload.google?.name ?? payload.user.name ?? storedName,
-          avatar: payload.google?.avatar_url ?? payload.user.google_avatar_url ?? storedAvatar,
+          avatar: payload.user.avatar_url ?? payload.google?.avatar_url ?? payload.user.google_avatar_url ?? storedAvatar,
           email: payload.google?.email ?? payload.user.email ?? null
         });
       })

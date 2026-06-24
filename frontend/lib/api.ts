@@ -1402,8 +1402,36 @@ export async function getGoogleProfile(token: string) {
 
   return response.json() as Promise<{
     connected: boolean;
-    user: { id: number; name: string; email: string; google_avatar_url?: string | null };
+    user: { id: number; name: string; email: string; avatar_url?: string | null; google_avatar_url?: string | null };
     google?: { email: string; name?: string | null; avatar_url?: string | null; scopes?: string[] | null } | null;
+  }>;
+}
+
+export async function syncGoogleAvatar(token: string, payload: {
+  avatar_url: string;
+  name?: string | null;
+  email?: string | null;
+  clerk_id?: string | null;
+  source?: string | null;
+}) {
+  const response = await fetch(`${API_URL}/api/user/google-avatar-sync`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error("Synchronisation du profil impossible");
+  }
+
+  return response.json() as Promise<{
+    message: string;
+    user: { id: number; name: string; email: string; avatar_url?: string | null; google_avatar_url?: string | null };
   }>;
 }
 

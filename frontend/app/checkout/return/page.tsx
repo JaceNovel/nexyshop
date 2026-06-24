@@ -2,6 +2,13 @@ import { CheckCircle2, Clock3, XCircle } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
 type DeliveryResponse = {
+  payment?: {
+    id: number;
+    reference: string;
+    status: string;
+    amount?: number;
+    currency?: string;
+  };
   order?: {
     id: number;
     status: string;
@@ -18,11 +25,12 @@ type DeliveryResponse = {
 
 export default async function CheckoutReturnPage({ searchParams }: { searchParams: Promise<{ paymentStatus?: string; paymentId?: string; order_id?: string }> }) {
   const params = await searchParams;
-  const status = params.paymentStatus ?? "pending";
-  const isSuccess = status === "success";
-  const isFailed = ["failed", "cancelled"].includes(status);
+  const status = normalizePaymentStatus(params.paymentStatus);
+  const delivery = await getDelivery(params.order_id, params.paymentId);
+  const effectiveStatus = normalizePaymentStatus(delivery?.payment?.status ?? delivery?.order?.status ?? status);
+  const isSuccess = ["success", "paid", "completed", "complete"].includes(effectiveStatus);
+  const isFailed = ["failed", "cancelled", "canceled"].includes(effectiveStatus);
   const Icon = isSuccess ? CheckCircle2 : isFailed ? XCircle : Clock3;
-  const delivery = isSuccess ? await getDelivery(params.order_id, params.paymentId) : null;
   const codes = delivery?.delivery_codes?.filter((item) => item.value) ?? [];
 
   return (
@@ -69,13 +77,24 @@ export default async function CheckoutReturnPage({ searchParams }: { searchParam
   );
 }
 
+function normalizePaymentStatus(status?: string | null) {
+  const value = String(status ?? "pending").toLowerCase();
+
+  if (["success", "successful", "succeeded", "paid", "completed", "complete"].includes(value)) return "success";
+  if (["failed", "failure", "cancelled", "canceled", "declined"].includes(value)) return "failed";
+
+  return value || "pending";
+}
+
 async function getDelivery(orderId?: string, paymentId?: string): Promise<DeliveryResponse | null> {
   if (!orderId || !paymentId) return null;
 
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "https://api.astral4gamer.com";
+  const statusUrl = `${baseUrl}/api/payments/moneroo/status?order_id=${encodeURIComponent(orderId)}&paymentId=${encodeURIComponent(paymentId)}`;
   const url = `${baseUrl}/api/orders/${encodeURIComponent(orderId)}/delivery?payment_reference=${encodeURIComponent(paymentId)}`;
 
   try {
+    await fetch(statusUrl, { headers: { Accept: "application/json" }, cache: "no-store" }).catch(() => null);
     const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
 
     if (!response.ok) return null;

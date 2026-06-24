@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getFreeFirePlayerProfile } from "@/lib/server/hlgaming-freefire";
+import { getFreeFirePlayerProfile } from "@/lib/server/freefire-lookup";
 
 export async function POST(request: Request) {
   try {

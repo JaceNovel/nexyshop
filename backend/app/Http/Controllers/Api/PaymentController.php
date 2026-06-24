@@ -131,6 +131,42 @@ class PaymentController extends Controller
         ]));
     }
 
+    public function monerooStatus(Request $request)
+    {
+        $data = $request->validate([
+            'paymentId' => ['required', 'string', 'max:160'],
+            'order_id' => ['required', 'integer', 'exists:orders,id'],
+        ]);
+
+        $payment = Payment::query()
+            ->where('reference', $data['paymentId'])
+            ->where('order_id', $data['order_id'])
+            ->firstOrFail();
+
+        if ($payment->provider === 'moneroo') {
+            $event = (new PaymentManager('moneroo'))->verify($payment->reference);
+            $this->applyVerifiedPayment($payment, $event);
+        }
+
+        $payment->refresh();
+        $order = $payment->order_id ? Order::find($payment->order_id) : null;
+
+        return response()->json([
+            'payment' => [
+                'id' => $payment->id,
+                'reference' => $payment->reference,
+                'status' => $payment->status,
+                'amount' => $payment->amount,
+                'currency' => $payment->currency,
+            ],
+            'order' => $order ? [
+                'id' => $order->id,
+                'status' => $order->status,
+                'fulfillment_status' => $order->metadata['fulfillment_status'] ?? null,
+            ] : null,
+        ]);
+    }
+
     public function verify(Request $request, Payment $payment)
     {
         abort_unless($payment->provider === 'moneroo', 422, 'Verification disponible pour Moneroo.');
@@ -148,6 +184,7 @@ class PaymentController extends Controller
             'currency' => $order->currency,
             'description' => 'Paiement commande Astral4Gamer #'.$order->id,
             'return_url' => config('services.payments.moneroo.return_url').'?order_id='.$order->id,
+            'callback_url' => $this->monerooCallbackUrl(),
             'customer' => $data['customer'],
             'metadata' => [
                 'order_id' => (string) $order->id,
@@ -173,6 +210,18 @@ class PaymentController extends Controller
         }
 
         return round($amount, 2);
+    }
+
+    private function monerooCallbackUrl(): string
+    {
+        $url = (string) config('services.payments.moneroo.webhook_url');
+        $token = trim((string) config('services.payments.moneroo.webhook_token'));
+
+        if ($token === '') {
+            return $url;
+        }
+
+        return $url.(str_contains($url, '?') ? '&' : '?').http_build_query(['token' => $token]);
     }
 
     private function storeOrderCustomer(Order $order, array $customer): void
@@ -252,7 +301,7 @@ class PaymentController extends Controller
                 ];
             }
 
-            if ((float) ($event['amount'] ?? 0) < (float) $order->amount) {
+            if ($this->isUnderpaid($event, $order)) {
                 $payment->update(['status' => 'amount_mismatch']);
                 return null;
             }
@@ -345,6 +394,21 @@ class PaymentController extends Controller
 
             DispatchSupplierOrder::dispatch($order)->delay(now()->addMinute());
         }
+    }
+
+    private function isUnderpaid(array $event, Order $order): bool
+    {
+        if (! isset($event['amount']) || ! is_numeric($event['amount'])) {
+            return false;
+        }
+
+        $paid = (float) $event['amount'];
+        $expected = (float) $order->amount;
+        $tolerance = in_array(strtoupper((string) $order->currency), ['XOF', 'XAF', 'GNF', 'RWF', 'BIF', 'UGX', 'JPY'], true)
+            ? 1.0
+            : 0.05;
+
+        return $paid + $tolerance < $expected;
     }
 
     private function resolveUserFromCustomer(array $customer): ?User

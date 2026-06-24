@@ -328,7 +328,7 @@ class ResellerApiController extends Controller
     {
         $partner = $this->partner($request);
         $data = $request->validate([
-            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'product_id' => ['nullable', 'integer', 'exists:products,id'],
             'variation_id' => ['nullable', 'string', 'max:255'],
             'quantity' => ['nullable', 'integer', 'min:1', 'max:20'],
             'partner_reference' => ['nullable', 'string', 'max:120'],
@@ -345,10 +345,14 @@ class ResellerApiController extends Controller
             'data.region' => ['nullable', 'string', 'max:80'],
         ]);
 
-        $product = Product::with('supplierProducts')->findOrFail($data['product_id']);
+        abort_if(empty($data['product_id']) && empty($data['variation_id']), 422, 'product_id ou variation_id requis.');
+
+        [$product, $prefilledSupplierProduct] = $this->resolveOrderProduct($data['product_id'] ?? null, $data['variation_id'] ?? null);
+
+        abort_unless($product, 404, 'Produit introuvable.');
         abort_unless($this->isFreeFireProduct($product) && $product->active, 404, 'Produit non autorisé pour ce partenaire.');
 
-        $supplierProduct = $this->selectedSupplierProduct($product, $data['variation_id'] ?? null);
+        $supplierProduct = $prefilledSupplierProduct ?: $this->selectedSupplierProduct($product, $data['variation_id'] ?? null);
         abort_if(($data['variation_id'] ?? null) && ! $supplierProduct, 422, 'Variation invalide ou indisponible.');
         $supplierCost = (float) ($supplierProduct?->cost ?: $product->price);
         abort_if($supplierCost <= 0, 422, 'Produit indisponible.');
@@ -360,6 +364,19 @@ class ResellerApiController extends Controller
         abort_if($gameUid === '', 422, 'ID joueur Free Fire requis.');
         $nickname = (string) ($data['data']['nickname'] ?? $data['data']['player_name'] ?? $gameUid);
         $reference = 'A4G-RS-'.now()->format('YmdHis').'-'.Str::upper(Str::random(6));
+
+        if ((bool) $request->attributes->get('reseller_sandbox', false)) {
+            return response()->json([
+                'data' => [
+                    'status' => 202,
+                    'order_id' => 'SANDBOX-'.$reference,
+                    'total' => $amount,
+                    'currency' => 'USD',
+                    'state' => 'sandbox',
+                    'message' => 'Commande test acceptée. Aucun solde débité.',
+                ],
+            ], 202);
+        }
 
         $resellerOrder = DB::transaction(function () use ($partner, $wallets, $amount, $reference, $product, $supplierProduct, $supplierCost, $unitPrice, $quantity, $gameUid, $nickname, $data) {
             $wallets->debit($partner, $amount, $reference, [
@@ -591,6 +608,25 @@ class ResellerApiController extends Controller
         }
 
         return $active->sortBy('cost')->first();
+    }
+
+    private function resolveOrderProduct(?int $productId, ?string $variationId): array
+    {
+        if ($productId) {
+            return [Product::with('supplierProducts')->find($productId), null];
+        }
+
+        if (! $variationId) {
+            return [null, null];
+        }
+
+        $supplierProduct = SupplierProduct::query()
+            ->with('product.supplierProducts')
+            ->where('external_sku', $variationId)
+            ->where('active', true)
+            ->first();
+
+        return [$supplierProduct?->product, $supplierProduct];
     }
 
     private function partner(Request $request): ResellerPartner
