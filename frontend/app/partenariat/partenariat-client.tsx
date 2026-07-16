@@ -14,7 +14,7 @@ const discordPartnerUrl =
 const partnerTypes = [
   {
     title: "Créateurs de contenu",
-    description: "Codes promo, lots pour ta communauté, sponsoring live et campagnes dédiées.",
+    description: "Codes promo, lots pour ta communauté et campagnes dédiées.",
     icon: Megaphone,
     earning: "5 000 à 500 000+ FCFA / mois",
     points: ["Code créateur", "Commissions validées", "Campagnes prioritaires"]
@@ -26,13 +26,6 @@ const partnerTypes = [
     earning: "30 000 à 1 000 000+ FCFA / mois",
     points: ["Prix volume", "Support commande", "Catalogue prêt à vendre"]
   },
-  {
-    title: "Tournois & sponsors",
-    description: "Lots, visibilité et accompagnement pour guildes, organisateurs et communautés.",
-    icon: Trophy,
-    earning: "Selon l'événement et l'audience",
-    points: ["Lots joueurs", "Mise en avant", "Analyse sponsor"]
-  }
 ];
 
 const steps = [

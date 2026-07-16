@@ -317,13 +317,12 @@ export default function InscriptionPage() {
                 ASTRAL<span className="text-[#ff1f2f]">4</span>GAMER
               </h1>
               <p className="mt-4 max-w-[460px] text-[13px] font-medium leading-6 text-[#5b6472]">
-                Crée ton compte et profite d’une expérience gaming unique : tournois, récompenses, produits exclusifs et bien plus encore !
+                Crée ton compte et profite d’une expérience gaming unique : récompenses, produits exclusifs et bien plus encore !
               </p>
             </div>
 
             <div className="relative mt-2 h-[400px] max-w-[620px] xl:h-[430px]">
               <img src={heroImage} alt="" className="absolute inset-0 h-full w-full object-contain object-bottom" />
-              <FeatureCard className="left-0 top-[102px]" icon={<Trophy className="h-4 w-4" />} title="Tournois" text="Participe & Gagne" />
               <FeatureCard className="right-[10px] top-[132px]" icon={<Users className="h-4 w-4" />} title="Communauté" text="Rejoins des gamers" />
               <FeatureCard className="bottom-[72px] left-0" icon={<Lock className="h-4 w-4" />} title="Boutique" text="Produits exclusifs" />
               <FeatureCard className="bottom-[46px] right-[28px]" icon={<Gift className="h-4 w-4" />} title="Récompenses" text="Points et bonus" />

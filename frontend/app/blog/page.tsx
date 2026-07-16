@@ -5,12 +5,12 @@ import { SiteHeader } from "@/components/site-header";
 import { getBlogPosts, type BlogPost } from "@/lib/api";
 
 export const metadata: Metadata = {
-  title: "Blog - Actualités, résultats & esport",
-  description: "Toutes les dernières nouvelles Free Fire, tournois, highlights, guides et interviews Astral4Gamer.",
+  title: "Blog - Actualités gaming",
+  description: "Toutes les dernières actualités, nouveautés, guides et interviews Astral4Gamer.",
   alternates: { canonical: "/blog" },
   openGraph: {
     title: "Blog Astral4Gamer",
-    description: "Actualités, résultats et esport.",
+    description: "Actualités, nouveautés et guides gaming.",
     type: "website",
     url: "/blog"
   }
@@ -18,8 +18,6 @@ export const metadata: Metadata = {
 
 const tabs = [
   ["TOUS", "", Trophy],
-  ["TOURNOIS", "tournoi", Trophy],
-  ["HIGHLIGHTS", "highlight", Video],
   ["ACTUALITÉS", "actualité", Trophy],
   ["GUIDES", "guide", Trophy],
   ["INTERVIEWS", "interview", CalendarDays],
@@ -38,7 +36,7 @@ export default async function BlogPage({ searchParams }: PageProps) {
   const category = params?.category?.trim() ?? "";
   const page = Number(params?.page ?? 1);
   const response = await getBlogPosts({ q, category, page, per_page: 12 }).catch(() => null);
-  const posts = response?.data ?? [];
+  const posts = (response?.data ?? []).filter((post) => !isEsportPost(post));
   const featured = posts[0] ?? null;
   const recent = posts.slice(0, 5);
   const categories = categoryStats(posts);
@@ -56,7 +54,7 @@ export default async function BlogPage({ searchParams }: PageProps) {
               <div className="absolute inset-0 bg-gradient-to-r from-white via-white/95 to-white/65" />
               <div className="relative min-h-[145px] max-w-[500px] sm:min-h-[170px]">
                 <p className="text-[32px] font-black italic leading-none tracking-normal text-[#111827] sm:text-[42px]">BLOG</p>
-                <h1 className="mt-2 text-[15px] font-extrabold uppercase text-[#ff1f32]">ACTUALITÉS, RÉSULTATS & ESPORT</h1>
+                <h1 className="mt-2 text-[15px] font-extrabold uppercase text-[#ff1f32]">ACTUALITÉS & UNIVERS GAMING</h1>
                 <p className="mt-4 max-w-[390px] text-[12px] leading-5 text-[#4b5563]">Les articles publiés depuis le backend Astral4Gamer, sans contenu de démonstration.</p>
                 <form className="mt-5 grid w-full max-w-[390px] grid-cols-[minmax(0,1fr)_38px] overflow-hidden rounded-md border border-[#e5e7eb] bg-white shadow-[0_7px_18px_rgba(16,24,40,.045)]">
                   <input name="q" defaultValue={q} className="h-9 min-w-0 bg-transparent px-3 text-[12px] text-[#111827] outline-none placeholder:text-[#8a90a0]" placeholder="Rechercher un article..." />
@@ -239,6 +237,11 @@ function postLabel(post: BlogPost) {
   if (source.includes("interview")) return "INTERVIEW";
   if (source.includes("discord") || source.includes("communauté")) return "COMMUNAUTÉ";
   return "ACTUALITÉ";
+}
+
+function isEsportPost(post: BlogPost) {
+  const source = `${post.title} ${post.excerpt} ${post.tournament?.title ?? ""} ${post.replay?.title ?? ""}`.toLowerCase();
+  return Boolean(post.tournament || post.replay) || /tournoi|tournament|duel|\b1v1\b|\bmatch\b|esport|e-sport|compétition|competition|classement|ranking|\blive\b|replay|highlight/.test(source);
 }
 
 function categoryStats(posts: BlogPost[]) {

@@ -8,6 +8,7 @@ import { CartProvider } from "@/components/cart-provider";
 import { LanguageProvider } from "@/components/language-provider";
 import { PreferenceDialog } from "@/components/preference-dialog";
 import { GoogleAvatarSync } from "@/components/google-avatar-sync";
+import { UI_FEATURES } from "@/lib/ui-feature-flags";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient());
@@ -28,7 +29,7 @@ export function Providers({ children }: { children: ReactNode }) {
           {children}
           <PreferenceDialog />
           <CartDrawer />
-          <DiscordFollowPopup />
+          {UI_FEATURES.automaticChallengeNotification ? <DiscordFollowPopup /> : null}
         </CartProvider>
       </LanguageProvider>
     </QueryClientProvider>

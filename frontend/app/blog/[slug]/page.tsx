@@ -41,6 +41,11 @@ export default async function BlogDetailPage({ params }: Props) {
     notFound();
   }
 
+  const esportSource = `${post.title} ${post.excerpt} ${post.tournament?.title ?? ""} ${post.replay?.title ?? ""}`.toLowerCase();
+  if (Boolean(post.tournament || post.replay) || /tournoi|tournament|duel|\b1v1\b|\bmatch\b|esport|e-sport|compétition|competition|classement|ranking|\blive\b|replay|highlight/.test(esportSource)) {
+    notFound();
+  }
+
   const shareUrl = `/blog/${post.slug}`;
 
   return (

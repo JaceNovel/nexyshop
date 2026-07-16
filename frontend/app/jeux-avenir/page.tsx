@@ -44,13 +44,12 @@ export default async function UpcomingGamesPage({ searchParams }: { searchParams
             <h1 className="text-4xl font-black tracking-normal sm:text-5xl">Jeux à venir</h1>
             <p className="mt-3 max-w-xl text-sm font-black text-[#293246]">Découvrez les prochains jeux qui vont rejoindre l'univers Astral4Gamer.</p>
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#667085]">
-              Restez à l’affût des nouveautés, inscrivez-vous et soyez parmi les premiers à jouer, participer aux tournois et gagner des récompenses exclusives.
+              Restez à l’affût des nouveautés, inscrivez-vous et soyez parmi les premiers à jouer et gagner des récompenses exclusives.
             </p>
           </div>
 
-          <div className="mt-8 grid max-w-[760px] gap-4 md:grid-cols-3">
+          <div className="mt-8 grid max-w-[760px] gap-4 md:grid-cols-2">
             <HeroBenefit icon={<Gamepad2 className="h-6 w-6" />} title="Nouveautés exclusives" text="Soyez les premiers informés" />
-            <HeroBenefit icon={<Trophy className="h-6 w-6" />} title="Tournois dès le lancement" text="Compétitions & gros cashprize" />
             <HeroBenefit icon={<Gift className="h-6 w-6" />} title="Récompenses spéciales" text="Pour les early players" />
           </div>
         </div>

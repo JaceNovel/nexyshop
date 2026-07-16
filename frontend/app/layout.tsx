@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     default: "Astral4Gamer",
     template: "%s | Astral4Gamer"
   },
-  description: "Plateforme premium pour boutique gaming, tournois Free Fire, lives, guildes et récompenses.",
+  description: "Plateforme premium pour boutique gaming, recharges, cartes cadeaux et récompenses.",
   metadataBase: new URL("https://astral4gamer.com"),
   applicationName: "Astral4Gamer",
   icons: {
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Astral4Gamer",
-    description: "Gaming, live, tournois et récompenses.",
+    description: "Gaming, recharges, cartes cadeaux et récompenses.",
     type: "website",
     siteName: "Astral4Gamer",
     images: [
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Astral4Gamer",
-    description: "Gaming, live, tournois et récompenses.",
+    description: "Gaming, recharges, cartes cadeaux et récompenses.",
     images: [brandLogo]
   }
 };

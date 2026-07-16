@@ -9,6 +9,7 @@ import { CountryFlag } from "@/components/country-flag";
 import { useLanguage, type DisplayCurrency, type SiteLanguage } from "@/components/language-provider";
 import { hasCatalogProductImage, resolveCatalogImage } from "@/lib/catalog-images";
 import { getAstralMails, getCatalogProducts, getHeaderNotifications, markAstralMailRead, type AstralMailMessage, type CatalogProduct, type HeaderNotification } from "@/lib/api";
+import { UI_FEATURES } from "@/lib/ui-feature-flags";
 
 const brandLogo = "/ChatGPT_Image_28_mai_2026__20_26_02-removebg-preview.png";
 
@@ -277,9 +278,11 @@ function LiveDropdown({ label = "Live Direct" }: { label?: string }) {
 function PubgDropdown() {
   const items = [
     ["/pubg", "Tableau de bord"],
-    ["/pubg/historique", "Historique des derniers matchs"],
-    ["/pubg/classement", "Classement TOP 500"],
-    ["/pubg/match", "Chercher un match"],
+    ...(UI_FEATURES.esports ? [
+      ["/pubg/historique", "Historique des derniers matchs"],
+      ["/pubg/classement", "Classement TOP 500"],
+      ["/pubg/match", "Chercher un match"]
+    ] : []),
     ["/pubg/comparateur", "Comparateur de joueur"]
   ];
 
@@ -480,8 +483,11 @@ export function SiteHeader() {
       const payload = await getHeaderNotifications();
 
       if (!cancelled) {
-        setNotifications(payload.items);
-        setNotificationCount(payload.unread_count);
+        const visibleItems = UI_FEATURES.esports
+          ? payload.items
+          : payload.items.filter((item) => item.type !== "tournament" && item.type !== "stream");
+        setNotifications(visibleItems);
+        setNotificationCount(Math.min(payload.unread_count, visibleItems.length));
       }
     }
 
@@ -788,10 +794,10 @@ export function SiteHeader() {
           <NavDropdown href="/category/top-up" label={t("gameCredits")} items={topUpItems} />
           <NavDropdown href="/category/carte-cadeau" label={t("giftCards")} items={giftItems} />
           <NavDropdown href="/category/game-keys" label={language === "fr" ? "Clés de jeux" : "Game Keys"} items={gameKeyItems} />
-	          <LiveDropdown label={t("live")} />
+	          {UI_FEATURES.esports ? <LiveDropdown label={t("live")} /> : null}
 	          {showPubgNav ? <PubgDropdown /> : null}
-	          <NavLink href="/tournois">{t("tournaments")}</NavLink>
-	          {!showPubgNav && !showCodNav ? <NavLink href="/duel">{t("duel")}</NavLink> : null}
+	          {UI_FEATURES.esports ? <NavLink href="/tournois">{t("tournaments")}</NavLink> : null}
+	          {UI_FEATURES.esports && !showPubgNav && !showCodNav ? <NavLink href="/duel">{t("duel")}</NavLink> : null}
 	          <NavLink href="/profil-public">{t("publicProfile")}</NavLink>
 	          {!showCodNav ? <NavLink href="/partenariat">{t("partnership")}</NavLink> : null}
 	          <NavLink href="/jeux-avenir">{t("upcoming")}</NavLink>
@@ -803,7 +809,7 @@ export function SiteHeader() {
           topUpItems={topUpItems}
           giftItems={giftItems}
           gameKeyItems={gameKeyItems}
-          liveItems={liveItems}
+          liveItems={UI_FEATURES.esports ? liveItems : []}
           labels={{
             title: language === "fr" ? "Catégories" : "Categories",
             home: t("home"),
@@ -949,11 +955,13 @@ function MobileCategoryDrawer({ topUpItems, giftItems, gameKeyItems, liveItems, 
     { key: "game", label: labels.gameCredits, href: "/category/top-up", items: topUpItems },
     { key: "gift", label: labels.giftCards, href: "/category/carte-cadeau", items: giftItems },
     { key: "keys", label: labels.gameKeys, href: "/category/game-keys", items: gameKeyItems },
-    { key: "live", label: labels.live, href: "/live", items: liveItems }
+    ...(UI_FEATURES.esports ? [{ key: "live", label: labels.live, href: "/live", items: liveItems }] : [])
   ];
   const directLinks = [
-    { label: labels.tournaments, href: "/tournois" },
-    { label: labels.duel, href: "/duel" },
+    ...(UI_FEATURES.esports ? [
+      { label: labels.tournaments, href: "/tournois" },
+      { label: labels.duel, href: "/duel" }
+    ] : []),
     { label: labels.publicProfile, href: "/profil-public" },
     { label: labels.partnership, href: "/partenariat" },
     { label: labels.upcoming, href: "/jeux-avenir" },
