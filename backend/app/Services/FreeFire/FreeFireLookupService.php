@@ -3,6 +3,7 @@
 namespace App\Services\FreeFire;
 
 use App\Models\ApiLog;
+use Carbon\Carbon;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -133,8 +134,10 @@ class FreeFireLookupService
                 'level' => $accountInfo['AccountLevel'] ?? $validation['level'] ?? null,
                 'likes' => $accountInfo['AccountLikes'] ?? null,
                 'exp' => $accountInfo['AccountEXP'] ?? null,
-                'last_login_at' => $accountInfo['AccountLastLogin'] ?? null,
-                'created_at' => $accountInfo['AccountCreateTime'] ?? null,
+                'last_login_at' => $this->normalizeTimestamp($accountInfo['AccountLastLogin'] ?? null),
+                'last_login_timestamp' => $accountInfo['AccountLastLogin'] ?? null,
+                'created_at' => $this->normalizeTimestamp($accountInfo['AccountCreateTime'] ?? null),
+                'created_timestamp' => $accountInfo['AccountCreateTime'] ?? null,
                 'br_rank_points' => $profileInfo['BrRankPoint'] ?? $accountInfo['BrRankPoint'] ?? null,
                 'cs_rank_points' => $profileInfo['CsRankPoint'] ?? $accountInfo['CsRankPoint'] ?? null,
                 'rank' => [
@@ -168,6 +171,29 @@ class FreeFireLookupService
             'currency' => 'XOF',
             'message' => "{$maxLikes} likes Free Fire coûtent {$price} FCFA.",
         ];
+    }
+
+    private function normalizeTimestamp(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_numeric($value)) {
+            $timestamp = (int) $value;
+
+            if ($timestamp > 9999999999) {
+                $timestamp = (int) floor($timestamp / 1000);
+            }
+
+            return Carbon::createFromTimestamp($timestamp)->toIso8601String();
+        }
+
+        try {
+            return Carbon::parse((string) $value)->toIso8601String();
+        } catch (Throwable) {
+            return (string) $value;
+        }
     }
 
     public function requestLikes(string $uid, string $region, int $likes = 100): array

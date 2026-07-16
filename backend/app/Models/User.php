@@ -12,9 +12,9 @@ class User extends Authenticatable
     use Notifiable;
 
     protected $fillable = [
-        'name', 'email', 'password', 'is_admin', 'google_id', 'google_avatar_url',
+        'name', 'email', 'password', 'is_admin', 'google_id', 'google_avatar_url', 'clerk_id',
         'steam_id', 'steam_persona_name', 'steam_avatar_url', 'steam_connected_at',
-        'google_connected_at', 'last_login_at',
+        'google_connected_at', 'last_login_at', 'admin_access_blocked_until', 'admin_access_suspended_at',
         'username', 'avatar_url', 'country', 'public_profile', 'game', 'player_uid',
         'rank', 'points', 'guild', 'wins', 'tournaments_won', 'kd_ratio', 'badges',
     ];
@@ -25,6 +25,8 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'google_connected_at' => 'datetime',
         'last_login_at' => 'datetime',
+        'admin_access_blocked_until' => 'datetime',
+        'admin_access_suspended_at' => 'datetime',
         'is_admin' => 'boolean',
         'public_profile' => 'boolean',
         'badges' => 'array',
@@ -43,5 +45,10 @@ class User extends Authenticatable
     public function mailMessages()
     {
         return $this->hasMany(MailMessage::class);
+    }
+
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
     }
 }

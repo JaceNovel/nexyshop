@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\ResellerOrder;
 use App\Models\Supplier;
 use App\Models\SupplierOrder;
+use App\Services\CustomerWalletRefundService;
+use App\Services\Reseller\ResellerWalletService;
 use App\Services\Suppliers\SupplierManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -58,6 +61,7 @@ class FazerCardsWebhookController extends Controller
             $metadata['fulfillment_status'] = $status;
             $metadata['supplier_external_id'] = $supplierOrder->external_id;
             $metadata['supplier_webhook_received_at'] = now()->toIso8601String();
+            $metadata['supplier_error'] = $this->supplierFailureReason($canonical, $payload);
 
             if (! empty($codes)) {
                 $metadata['delivery_codes'] = $codes;
@@ -74,6 +78,12 @@ class FazerCardsWebhookController extends Controller
                 'status' => $orderStatus,
                 'metadata' => $metadata,
             ])->save();
+
+            if (in_array($status, ['failed', 'cancelled'], true)) {
+                $reason = $metadata['supplier_error'] ?: 'Supplier order failed.';
+                app(CustomerWalletRefundService::class)->refundSupplierFailure($order->fresh(), $reason);
+                $this->refundResellerOrder($order->fresh(), $reason);
+            }
 
             if (! empty($codes)) {
                 $this->emailDeliveryCodes($order, $codes);
@@ -240,6 +250,48 @@ class FazerCardsWebhookController extends Controller
         return 'processing';
     }
 
+    private function supplierFailureReason(array $canonical, array $payload): ?string
+    {
+        return Arr::get($canonical, 'fail_reason')
+            ?? Arr::get($canonical, 'data.fail_reason')
+            ?? Arr::get($canonical, 'order.fail_reason')
+            ?? Arr::get($payload, 'fail_reason')
+            ?? Arr::get($payload, 'data.fail_reason')
+            ?? Arr::get($payload, 'reason')
+            ?? Arr::get($payload, 'data.reason');
+    }
+
+    private function refundResellerOrder(Order $order, string $reason): void
+    {
+        $metadata = $order->metadata ?? [];
+
+        if (! empty($metadata['reseller_refunded_at'])) {
+            return;
+        }
+
+        $resellerOrder = ResellerOrder::query()
+            ->with('partner')
+            ->where('order_id', $order->id)
+            ->first();
+
+        if (! $resellerOrder || ! $resellerOrder->partner) {
+            return;
+        }
+
+        app(ResellerWalletService::class)->refundDebit($resellerOrder->partner, (float) $resellerOrder->amount, $resellerOrder->external_reference.'-REFUND', [
+            'type' => 'reseller_order_refund',
+            'description' => 'Remboursement commande reseller échouée fournisseur.',
+            'order_id' => $order->id,
+            'reseller_order_id' => $resellerOrder->id,
+            'reason' => $reason,
+        ]);
+
+        $metadata['reseller_refunded_at'] = now()->toIso8601String();
+        $metadata['reseller_refund_reason'] = $reason;
+        $order->forceFill(['metadata' => $metadata])->save();
+        $resellerOrder->forceFill(['status' => 'failed'])->save();
+    }
+
     private function extractDeliveryCodes(array $payload): array
     {
         $codes = [];
@@ -247,6 +299,7 @@ class FazerCardsWebhookController extends Controller
             'activation_code',
             'card_code',
             'card_number',
+            'cards',
             'claim_code',
             'code',
             'codes',

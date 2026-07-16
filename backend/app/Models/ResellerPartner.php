@@ -16,6 +16,10 @@ class ResellerPartner extends Model
         'password',
         'discord',
         'status',
+        'api_status',
+        'risk_level',
+        'astral_score',
+        'order_creation_allowed',
         'allowed_scope',
         'margin_percent',
         'minimum_topup',
@@ -29,6 +33,8 @@ class ResellerPartner extends Model
         'margin_percent' => 'float',
         'minimum_topup' => 'float',
         'low_balance_threshold' => 'float',
+        'astral_score' => 'integer',
+        'order_creation_allowed' => 'boolean',
         'metadata' => 'array',
     ];
 
@@ -50,5 +56,25 @@ class ResellerPartner extends Model
     public function orders(): HasMany
     {
         return $this->hasMany(ResellerOrder::class);
+    }
+
+    public function recharges(): HasMany
+    {
+        return $this->hasMany(ResellerRecharge::class);
+    }
+
+    public function loans(): HasMany
+    {
+        return $this->hasMany(ResellerLoan::class);
+    }
+
+    public function logs(): HasMany
+    {
+        return $this->hasMany(ResellerPartnerLog::class);
+    }
+
+    public function scoreEvents(): HasMany
+    {
+        return $this->hasMany(ResellerPartnerScoreEvent::class);
     }
 }

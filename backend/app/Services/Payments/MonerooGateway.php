@@ -4,6 +4,7 @@ namespace App\Services\Payments;
 
 use App\Models\ApiLog;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
@@ -16,10 +17,18 @@ class MonerooGateway implements PaymentGateway
         $this->ensureConfigured();
         $payload = $this->normalizePayload($payload);
 
-        $response = Http::withToken((string) config('services.payments.moneroo.secret_key'))
-            ->acceptJson()
-            ->asJson()
-            ->post($this->url('/v1/payments/initialize'), $payload);
+        try {
+            $response = Http::withToken((string) config('services.payments.moneroo.secret_key'))
+                ->acceptJson()
+                ->asJson()
+                ->connectTimeout(8)
+                ->timeout(20)
+                ->post($this->url('/v1/payments/initialize'), $payload);
+        } catch (ConnectionException) {
+            throw new HttpResponseException(response()->json([
+                'message' => 'Le prestataire de paiement ne répond pas. Réessaie dans un instant.',
+            ], 504));
+        }
 
         $this->log('/v1/payments/initialize', $response, $this->safePayload($payload));
         $this->throwIfFailed($response);
@@ -120,6 +129,9 @@ class MonerooGateway implements PaymentGateway
             $payload['amount'] = $this->normalizeAmount($payload['amount'], $payload['currency']);
         }
 
+        $hadExplicitMethods = isset($payload['methods']) && is_array($payload['methods']) && array_filter($payload['methods'], static fn ($method) => is_string($method) && trim($method) !== '') !== [];
+        $hadOnlyGenericMethods = $hadExplicitMethods && $this->hasOnlyGenericMethods($payload['methods']);
+
         if (isset($payload['methods']) && is_array($payload['methods'])) {
             $payload['methods'] = $this->expandMethodAliases($payload['methods'], $payload['currency']);
             $payload['methods'] = array_values(array_unique(array_filter(array_map(
@@ -140,6 +152,7 @@ class MonerooGateway implements PaymentGateway
             ))));
 
             if ($payload['methods'] === []) {
+                abort_if($hadExplicitMethods && ! $hadOnlyGenericMethods, 422, 'Cette methode de paiement n\'est pas disponible pour cette devise. Choisissez une autre methode.');
                 unset($payload['methods']);
             }
         } else {
@@ -183,10 +196,10 @@ class MonerooGateway implements PaymentGateway
             return $methods;
         }
 
-        $availableCodes = $this->availableMethodCodesForCurrency($currency);
+        $configuredCodes = $this->configuredMethodCodesForCurrency($currency);
 
         return collect($methods)
-            ->flatMap(function ($method) use ($availableCodes, $currency) {
+            ->flatMap(function ($method) use ($configuredCodes) {
                 if (! is_string($method)) {
                     return [];
                 }
@@ -194,13 +207,19 @@ class MonerooGateway implements PaymentGateway
                 $normalized = strtolower(trim($method));
 
                 if ($normalized === 'card') {
-                    $cardCodes = array_values(array_filter($availableCodes, static fn (string $code) => str_starts_with($code, 'card_')));
+                    if ($configuredCodes !== null) {
+                        return array_values(array_filter($configuredCodes, static fn (string $code) => str_starts_with($code, 'card_')));
+                    }
 
-                    return $cardCodes !== [] ? $cardCodes : ['card_'.strtolower($currency)];
+                    return [];
                 }
 
                 if (in_array($normalized, ['mobile_money', 'mobile-money'], true)) {
-                    $mobileMoneyCodes = array_values(array_filter($availableCodes, static fn (string $code) => ! str_starts_with($code, 'card_')));
+                    if ($configuredCodes === null) {
+                        return [];
+                    }
+
+                    $mobileMoneyCodes = array_values(array_filter($configuredCodes, static fn (string $code) => ! str_starts_with($code, 'card_') && ! str_starts_with($code, 'crypto_')));
 
                     return $mobileMoneyCodes;
                 }
@@ -211,39 +230,36 @@ class MonerooGateway implements PaymentGateway
             ->all();
     }
 
-    private function availableMethodCodesForCurrency(string $currency): array
+    private function hasOnlyGenericMethods(array $methods): bool
     {
-        try {
-            $response = Http::withToken((string) config('services.payments.moneroo.secret_key'))
-                ->acceptJson()
-                ->get($this->url('/utils/payment/methods'));
+        $normalizedMethods = array_values(array_filter(array_map(
+            static fn ($method) => is_string($method) ? strtolower(trim($method)) : '',
+            $methods
+        )));
 
-            if (! $response->successful()) {
-                return [];
-            }
-
-            $items = $response->json('data', $response->json());
-
-            return collect(Arr::wrap($items))
-                ->filter(fn ($item) => is_array($item))
-                ->filter(function (array $item) use ($currency) {
-                    $itemCurrency = strtoupper((string) ($item['currency'] ?? $item['currency_code'] ?? data_get($item, 'currency.code')));
-
-                    return $itemCurrency === strtoupper($currency);
-                })
-                ->filter(static fn (array $item) => ($item['is_enabled'] ?? true) !== false)
-                ->map(function (array $item) {
-                    $code = (string) ($item['short_code'] ?? $item['code'] ?? $item['Code'] ?? $item['method_code'] ?? '');
-
-                    return strtolower(trim($code));
-                })
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
-        } catch (\Throwable) {
-            return [];
+        if ($normalizedMethods === []) {
+            return false;
         }
+
+        return collect($normalizedMethods)->every(static fn (string $method) => in_array($method, ['card', 'mobile_money', 'mobile-money'], true));
+    }
+
+    private function configuredMethodCodesForCurrency(string $currency): ?array
+    {
+        $methodsByCurrency = config('services.payments.moneroo.methods_by_currency', []);
+        $currencyMethods = is_array($methodsByCurrency) ? ($methodsByCurrency[strtoupper($currency)] ?? $methodsByCurrency[strtolower($currency)] ?? []) : [];
+        $defaultMethods = config('services.payments.moneroo.default_methods', []);
+        $methods = $currencyMethods !== [] ? $currencyMethods : $defaultMethods;
+
+        $codes = collect(Arr::wrap($methods))
+            ->filter(fn ($method) => is_string($method))
+            ->map(fn (string $method) => strtolower(trim($method)))
+            ->filter(fn (string $method) => $method !== '' && ! in_array($method, ['card', 'mobile_money', 'mobile-money'], true))
+            ->unique()
+            ->values()
+            ->all();
+
+        return $codes !== [] ? $codes : null;
     }
 
     private function resolveCurrency(mixed $currency): string

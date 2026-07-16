@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\LiveStream;
 use App\Models\Stream;
 use App\Models\TournamentTeam;
+use App\Services\TournamentScoringService;
 use Illuminate\Http\Request;
 
 class LiveController extends Controller
@@ -24,23 +24,7 @@ class LiveController extends Controller
             return response()->json(['data' => $this->streamPayload($stream)]);
         }
 
-        $legacy = LiveStream::where('status', 'live')->latest('starts_at')->first()
-            ?? LiveStream::latest('starts_at')->first();
-
-        return response()->json(['data' => $legacy ? [
-            'id' => null,
-            'title' => $legacy->title,
-            'status' => $legacy->status,
-            'viewer_count' => (int) $legacy->viewers,
-            'youtube_video_id' => $legacy->youtube_video_id,
-            'watch_url' => $legacy->youtube_video_id ? 'https://www.youtube.com/watch?v='.$legacy->youtube_video_id : null,
-            'embed_url' => $legacy->youtube_video_id ? 'https://www.youtube.com/embed/'.$legacy->youtube_video_id : null,
-            'round' => ['current' => 1, 'total' => 1, 'next_round_seconds' => 0],
-            'tournament' => null,
-            'teams' => [],
-            'ranking' => [],
-            'stats' => ['alive_teams' => 0, 'dead_teams' => 0, 'total_teams' => 0, 'total_kills' => 0],
-        ] : null]);
+        return response()->json(['data' => null]);
     }
 
     public function adminIndex()
@@ -78,7 +62,7 @@ class LiveController extends Controller
             'map' => $data['map'] ?? null,
             'prize_text' => $data['prize_text'] ?? null,
             'round_current' => $data['round_current'] ?? 1,
-            'round_total' => $data['round_total'] ?? 7,
+            'round_total' => $data['round_total'] ?? 3,
             'next_round_seconds' => $data['next_round_seconds'] ?? 0,
         ];
 
@@ -144,7 +128,7 @@ class LiveController extends Controller
         return response()->json(['data' => $this->streamPayload($stream->fresh(['tournament.teams']))]);
     }
 
-    public function adminUpdateTeam(Request $request, Stream $stream, TournamentTeam $team)
+    public function adminUpdateTeam(Request $request, Stream $stream, TournamentTeam $team, TournamentScoringService $scoring)
     {
         abort_unless((int) $team->tournament_id === (int) $stream->tournament_id, 404);
 
@@ -177,6 +161,10 @@ class LiveController extends Controller
         }
         if (array_key_exists('points', $data)) {
             $updates['points'] = $data['points'];
+        } elseif (array_key_exists('placement', $data) || array_key_exists('kills', $data)) {
+            $placement = (int) ($live['placement'] ?? 0);
+            $kills = (int) ($updates['kills'] ?? $team->kills);
+            $updates['points'] = $placement > 0 ? $scoring->points($placement, $kills) : $kills;
         }
 
         $team->update($updates);
@@ -271,7 +259,7 @@ class LiveController extends Controller
             'started_at' => $stream->started_at,
             'round' => [
                 'current' => (int) ($metadata['round_current'] ?? 1),
-                'total' => (int) ($metadata['round_total'] ?? 7),
+                'total' => (int) ($metadata['round_total'] ?? 3),
                 'next_round_seconds' => (int) ($metadata['next_round_seconds'] ?? 0),
             ],
             'game' => $metadata['game'] ?? data_get($stream->tournament?->rules, 'game', 'Free Fire'),

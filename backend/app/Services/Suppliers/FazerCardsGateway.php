@@ -74,6 +74,28 @@ class FazerCardsGateway extends AbstractSupplierGateway
         ]);
     }
 
+    public function validateTopupSku(string $sku, array $fields): array
+    {
+        $decoded = $this->decodeSku($sku);
+
+        if (($decoded['kind'] ?? null) !== 'topup' || empty($decoded['category_id'])) {
+            throw new \InvalidArgumentException('Unsupported FazerCards top-up validation payload.');
+        }
+
+        return $this->validateTopupId($decoded['category_id'], $this->topupFields($decoded['category_id'], $fields));
+    }
+
+    public static function decodedTopupCategory(string $sku): ?string
+    {
+        $decoded = self::decodeSku($sku);
+
+        if (($decoded['kind'] ?? null) !== 'topup') {
+            return null;
+        }
+
+        return $decoded['category_id'] ?? null;
+    }
+
     public function topups(array $query = []): array
     {
         return $this->get('/topups', $query + ['include_ui' => 1]);
@@ -125,7 +147,7 @@ class FazerCardsGateway extends AbstractSupplierGateway
             'topup' => $this->postWithIdempotency('/topups/order', [
                 'category_id' => $sku['category_id'],
                 'offer_id' => $sku['offer_id'],
-                'fields' => $fields,
+                'fields' => $this->topupFields($sku['category_id'], $fields),
             ], $idempotencyKey),
             'gift_card' => $this->postWithIdempotency('/giftcards/order', [
                 'category_id' => $sku['category_id'],
@@ -143,6 +165,18 @@ class FazerCardsGateway extends AbstractSupplierGateway
                 'fields' => $fields,
             ], $idempotencyKey),
             default => throw new \InvalidArgumentException('Unsupported FazerCards variation payload.'),
+        };
+    }
+
+    private function topupFields(string $categoryId, array $fields): array
+    {
+        $fields = array_filter($fields, fn ($value) => $value !== null && $value !== '');
+
+        return match ($categoryId) {
+            'free_fire_mena' => array_filter([
+                'player_id' => $fields['player_id'] ?? $fields['user_id'] ?? $fields['uid'] ?? null,
+            ], fn ($value) => $value !== null && $value !== ''),
+            default => $fields,
         };
     }
 

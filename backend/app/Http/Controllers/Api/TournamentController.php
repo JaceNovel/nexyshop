@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\Payment;
+use App\Models\Product;
 use App\Models\Tournament;
 use App\Models\TournamentRoundResult;
 use App\Models\TournamentTeam;
 use App\Services\AstralNotificationService;
 use App\Services\Discord\DiscordNotificationService;
+use App\Services\FreeFire\FreeFireLookupService;
 use App\Services\GoogleTournamentCalendarService;
 use App\Services\Payments\PaymentManager;
 use App\Services\TournamentScoringService;
@@ -21,7 +24,10 @@ class TournamentController extends Controller
 {
     public function index()
     {
-        return Tournament::withCount('teams')->latest('starts_at')->paginate(18);
+        return Tournament::withCount('teams')
+            ->orderByRaw('case when title = ? then 0 else 1 end', ["Tournoi officiel d'inauguration"])
+            ->latest('starts_at')
+            ->paginate(18);
     }
 
     public function show(Tournament $tournament)
@@ -175,7 +181,7 @@ class TournamentController extends Controller
         return response()->noContent();
     }
 
-    public function register(Request $request, Tournament $tournament, AstralNotificationService $notifications, DiscordNotificationService $discord)
+    public function register(Request $request, Tournament $tournament, AstralNotificationService $notifications, DiscordNotificationService $discord, FreeFireLookupService $freeFire)
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -187,13 +193,15 @@ class TournamentController extends Controller
             'contact_whatsapp' => ['nullable', 'string', 'max:40'],
             'instagram' => ['nullable', 'string', 'max:80'],
             'discord' => ['nullable', 'string', 'max:160'],
-            'logo' => ['nullable', 'string', 'max:1500000'],
+            'logo' => ['nullable', 'string', 'max:6000000'],
             'members' => ['nullable', 'array', 'max:5'],
             'members.*.role' => ['required_with:members', 'string', 'max:40'],
             'members.*.nickname' => ['nullable', 'string', 'max:80'],
             'members.*.uid' => ['nullable', 'string', 'max:40'],
             'members.*.whatsapp' => ['nullable', 'string', 'max:40'],
         ]);
+
+        $members = $this->verifiedTournamentMembers($tournament, $data['members'] ?? [], $freeFire);
 
         $team = TournamentTeam::create([
             'name' => $data['name'],
@@ -210,7 +218,8 @@ class TournamentController extends Controller
                 'instagram' => $data['instagram'] ?? null,
                 'discord' => $data['discord'] ?? null,
                 'logo' => $data['logo'] ?? null,
-                'members' => $data['members'] ?? [],
+                'members' => $members,
+                'members_verified_at' => now()->toIso8601String(),
             ],
         ]);
 
@@ -227,6 +236,164 @@ class TournamentController extends Controller
         $discord->tournamentRegistration($tournament, $team, $request->user());
 
         return $team;
+    }
+
+    public function registerPaid(Request $request, Tournament $tournament, AstralNotificationService $notifications, FreeFireLookupService $freeFire)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'tag' => ['nullable', 'string', 'max:10'],
+            'guild_id' => ['nullable', 'exists:guilds,id'],
+            'region' => ['nullable', 'string', 'max:80'],
+            'country' => ['nullable', 'string', 'max:80'],
+            'description' => ['nullable', 'string', 'max:150'],
+            'contact_whatsapp' => ['nullable', 'string', 'max:40'],
+            'instagram' => ['nullable', 'string', 'max:80'],
+            'discord' => ['nullable', 'string', 'max:160'],
+            'logo' => ['nullable', 'string', 'max:6000000'],
+            'members' => ['nullable', 'array', 'max:5'],
+            'members.*.role' => ['required_with:members', 'string', 'max:40'],
+            'members.*.nickname' => ['nullable', 'string', 'max:80'],
+            'members.*.uid' => ['nullable', 'string', 'max:40'],
+            'members.*.whatsapp' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        $members = $this->verifiedTournamentMembers($tournament, $data['members'] ?? [], $freeFire);
+        $entryFee = (float) ($tournament->rules['entry_fee_amount'] ?? $tournament->rules['team_entry_fee'] ?? 3000);
+        $entryCurrency = strtoupper((string) ($tournament->rules['entry_fee_currency'] ?? 'XOF'));
+
+        [$team, $order] = DB::transaction(function () use ($request, $tournament, $data, $members, $entryFee, $entryCurrency) {
+            $registrationProduct = Product::firstOrCreate(
+                ['sku' => 'tournament-registration-fee'],
+                [
+                    'name' => 'Frais inscription tournoi',
+                    'game' => 'Astral Esport',
+                    'price' => $entryFee,
+                    'currency' => $entryCurrency,
+                    'active' => true,
+                    'metadata' => ['type' => 'tournament_registration'],
+                ]
+            );
+
+            $team = TournamentTeam::create([
+                'name' => $data['name'],
+                'guild_id' => $data['guild_id'] ?? null,
+                'tournament_id' => $tournament->id,
+                'captain_user_id' => $request->user()->id,
+                'status' => 'pending_payment',
+                'metadata' => [
+                    'tag' => $data['tag'] ?? null,
+                    'region' => $data['region'] ?? null,
+                    'country' => $data['country'] ?? null,
+                    'description' => $data['description'] ?? null,
+                    'contact_whatsapp' => $data['contact_whatsapp'] ?? null,
+                    'instagram' => $data['instagram'] ?? null,
+                    'discord' => $data['discord'] ?? null,
+                    'logo' => $data['logo'] ?? null,
+                    'members' => $members,
+                    'members_verified_at' => now()->toIso8601String(),
+                    'payment_status' => 'pending',
+                    'entry_fee_amount' => $entryFee,
+                    'entry_fee_currency' => $entryCurrency,
+                    'challenge_status' => 'awaiting_payment',
+                ],
+            ]);
+
+            $order = Order::create([
+                'user_id' => $request->user()->id,
+                'product_id' => $registrationProduct->id,
+                'game_uid' => 'TOURNAMENT-'.$tournament->id.'-TEAM-'.$team->id,
+                'nickname' => $team->name,
+                'amount' => $entryFee,
+                'currency' => $entryCurrency,
+                'status' => 'pending_payment',
+                'metadata' => [
+                    'type' => 'tournament_registration',
+                    'manual_fulfillment' => true,
+                    'fulfillment_status' => 'awaiting_payment',
+                    'tournament_id' => $tournament->id,
+                    'tournament_title' => $tournament->title,
+                    'team_id' => $team->id,
+                    'team_name' => $team->name,
+                    'entry_fee_amount' => $entryFee,
+                    'entry_fee_currency' => $entryCurrency,
+                ],
+            ]);
+
+            return [$team, $order];
+        });
+
+        $notifications->notifyUser($request->user(), [
+            'type' => 'tournament_registration_payment',
+            'title' => 'Paiement inscription requis',
+            'subject' => 'Paiement inscription tournoi requis',
+            'preview' => "Ton equipe {$team->name} est prete. Termine le paiement de {$entryFee} {$entryCurrency} pour valider le defi.",
+            'action_label' => 'Payer maintenant',
+            'action_url' => rtrim((string) config('services.google.frontend_url'), '/').'/mode',
+            'data' => ['tournament_id' => $tournament->id, 'team_id' => $team->id, 'order_id' => $order->id],
+        ]);
+
+        return response()->json([
+            'team' => $team,
+            'order' => $order,
+            'message' => 'Equipe enregistree. Paiement requis pour valider le defi Astral Esport.',
+        ], 201);
+    }
+
+    private function verifiedTournamentMembers(Tournament $tournament, array $members, FreeFireLookupService $freeFire): array
+    {
+        $requiredCount = $this->isSoloTournament($tournament) ? 1 : 4;
+        $provided = collect($members)
+            ->filter(fn ($member) => is_array($member) && trim((string) ($member['uid'] ?? '')) !== '')
+            ->values();
+
+        abort_if($provided->count() < $requiredCount, 422, $requiredCount === 1
+            ? 'Ajoute et vérifie l ID du joueur avant de participer.'
+            : 'Ajoute et vérifie les IDs des 4 joueurs principaux avant de créer l équipe.');
+
+        $region = $this->freeFireRegion($tournament);
+
+        return $provided->map(function (array $member, int $index) use ($freeFire, $region) {
+            $uid = trim((string) ($member['uid'] ?? ''));
+
+            try {
+                $profile = $freeFire->validateUid($uid, $region);
+            } catch (Throwable) {
+                abort(422, "Impossible de vérifier l ID joueur {$uid}. Vérifie l ID puis réessaie.");
+            }
+
+            return [
+                'role' => trim((string) ($member['role'] ?? 'Joueur '.($index + 1))) ?: 'Joueur '.($index + 1),
+                'uid' => (string) ($profile['uid'] ?? $uid),
+                'nickname' => (string) ($profile['nickname'] ?? $uid),
+                'whatsapp' => trim((string) ($member['whatsapp'] ?? '')) ?: null,
+                'verified' => (bool) ($profile['verified'] ?? true),
+                'region' => $profile['region'] ?? $region,
+                'level' => $profile['level'] ?? null,
+            ];
+        })->values()->all();
+    }
+
+    private function freeFireRegion(Tournament $tournament): string
+    {
+        $region = strtolower((string) ($tournament->rules['region'] ?? config('services.freefire.lookup.default_region', 'me')));
+
+        return match (true) {
+            str_contains($region, 'brésil'), str_contains($region, 'bresil'), str_contains($region, 'brazil') => 'br',
+            str_contains($region, 'inde'), str_contains($region, 'india') => 'in',
+            str_contains($region, 'asie'), str_contains($region, 'asia'), str_contains($region, 'singapore') => 'sg',
+            str_contains($region, 'europe') => 'eu',
+            str_contains($region, 'mena'), str_contains($region, 'afrique'), str_contains($region, 'moyen') => 'me',
+            default => preg_match('/^[a-z]{2,8}$/', $region) ? $region : 'me',
+        };
+    }
+
+    private function isSoloTournament(Tournament $tournament): bool
+    {
+        $teamType = strtolower((string) ($tournament->rules['team_type'] ?? ''));
+        $mode = strtolower((string) $tournament->mode);
+
+        return str_contains($teamType, 'solo') || str_contains($mode, 'solo');
     }
 
     public function complete(Request $request, Tournament $tournament, DiscordNotificationService $discord)

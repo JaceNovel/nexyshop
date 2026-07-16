@@ -2,6 +2,7 @@
 
 namespace App\Services\Discord;
 
+use App\Models\BlogPost;
 use App\Models\Stream;
 use App\Models\Order;
 use App\Models\Product;
@@ -17,6 +18,39 @@ use Throwable;
 
 class DiscordNotificationService
 {
+    public function blogPostPublished(BlogPost $post): void
+    {
+        $url = $this->frontendUrl('/blog/'.$post->slug);
+
+        $this->send('announcements', [
+            'username' => config('services.discord.username', 'Astral4Gamer'),
+            'avatar_url' => config('services.discord.avatar_url'),
+            'allowed_mentions' => ['parse' => []],
+            'embeds' => [[
+                'title' => 'Nouvel article Astral4Gamer',
+                'description' => "**{$post->title}**\n".($post->excerpt ?: 'Un nouvel article est disponible sur le blog Astral4Gamer.'),
+                'url' => $url,
+                'color' => $this->color(),
+                'image' => ($imageUrl = $this->publicImageUrl($post->cover_image_url)) ? ['url' => $imageUrl] : null,
+                'fields' => [
+                    ['name' => 'Blog', 'value' => 'Astral4Gamer', 'inline' => true],
+                    ['name' => 'Statut', 'value' => 'Publié', 'inline' => true],
+                ],
+                'footer' => ['text' => 'ASTRAL4GAMER - Annonces'],
+                'timestamp' => now()->toIso8601String(),
+            ]],
+            'components' => [[
+                'type' => 1,
+                'components' => [[
+                    'type' => 2,
+                    'style' => 5,
+                    'label' => 'Lire l article',
+                    'url' => $url,
+                ]],
+            ]],
+        ]);
+    }
+
     public function tournamentPublished(Tournament $tournament, string $event = 'created'): void
     {
         $detailUrl = $this->tournamentUrl($tournament);
@@ -29,27 +63,31 @@ class DiscordNotificationService
         $participants = $tournament->rules['participants'] ?? null;
         $region = $tournament->rules['region'] ?? null;
         $platform = $tournament->rules['platform'] ?? null;
-        $description = trim((string) ($tournament->rules['description'] ?? ''));
+        $title = trim((string) ($tournament->rules['title_en'] ?? '')) ?: $tournament->title;
+        $description = trim((string) ($tournament->rules['description_en'] ?? $tournament->rules['description'] ?? ''));
+        $imageUrl = $this->publicImageUrl($tournament->rules['cover_image'] ?? null) ?: $this->frontendUrl('/hero-tournament.png');
+        $liveUrl = trim((string) ($tournament->rules['live_url'] ?? ''));
 
-        $this->send('tournaments', [
+        $this->send('tournament_registrations', [
             'username' => config('services.discord.username', 'Astral4Gamer'),
             'avatar_url' => config('services.discord.avatar_url'),
             'allowed_mentions' => ['parse' => []],
             'embeds' => [[
-                'title' => $event === 'updated' ? 'Tournoi mis à jour' : 'Nouveau tournoi programmé',
-                'description' => "**{$tournament->title}**\n".($description ?: 'Les inscriptions sont ouvertes sur Astral4Gamer. Prépare-toi et viens tenter ta chance.'),
+                'title' => $event === 'updated' ? 'Tournament Updated' : 'New Tournament Scheduled',
+                'description' => "**{$title}**\n".($description ?: 'Registrations are open on Astral4Gamer. Get ready and compete for the prize.'),
                 'url' => $detailUrl,
                 'color' => $this->color(),
+                'image' => ['url' => $imageUrl],
                 'fields' => array_values(array_filter([
-                    ['name' => 'Jeu', 'value' => (string) $game, 'inline' => true],
+                    ['name' => 'Game', 'value' => (string) $game, 'inline' => true],
                     ['name' => 'Mode', 'value' => (string) $tournament->mode, 'inline' => true],
                     ['name' => 'Format', 'value' => $teamType, 'inline' => true],
-                    ['name' => 'Statut', 'value' => $status, 'inline' => true],
-                    ['name' => 'Début', 'value' => $startsAt, 'inline' => true],
-                    ['name' => 'À gagner', 'value' => $this->money($tournament->prize_pool, (string) $rewardUnit), 'inline' => true],
-                    $participants ? ['name' => 'Places', 'value' => (string) $participants, 'inline' => true] : null,
-                    $region ? ['name' => 'Région', 'value' => (string) $region, 'inline' => true] : null,
-                    $platform ? ['name' => 'Plateforme', 'value' => (string) $platform, 'inline' => true] : null,
+                    ['name' => 'Status', 'value' => $status, 'inline' => true],
+                    ['name' => 'Starts', 'value' => $startsAt, 'inline' => true],
+                    ['name' => 'Prize', 'value' => $this->money($tournament->prize_pool, (string) $rewardUnit), 'inline' => true],
+                    $participants ? ['name' => 'Slots', 'value' => (string) $participants, 'inline' => true] : null,
+                    $region ? ['name' => 'Region', 'value' => (string) $region, 'inline' => true] : null,
+                    $platform ? ['name' => 'Platform', 'value' => (string) $platform, 'inline' => true] : null,
                     $tournament->room_id ? ['name' => 'Room ID', 'value' => (string) $tournament->room_id, 'inline' => true] : null,
                 ])),
                 'footer' => ['text' => 'ASTRAL4GAMER - PLAY - COMPETE - WIN'],
@@ -57,20 +95,26 @@ class DiscordNotificationService
             ]],
             'components' => [[
                 'type' => 1,
-                'components' => [
+                'components' => array_values(array_filter([
                     [
                         'type' => 2,
                         'style' => 5,
-                        'label' => 'Inscription',
+                        'label' => 'Register',
                         'url' => $registrationUrl,
                     ],
                     [
                         'type' => 2,
                         'style' => 5,
-                        'label' => 'Détails',
+                        'label' => 'Details',
                         'url' => $detailUrl,
                     ],
-                ],
+                    $liveUrl ? [
+                        'type' => 2,
+                        'style' => 5,
+                        'label' => 'Watch Live',
+                        'url' => $liveUrl,
+                    ] : null,
+                ])),
             ]],
         ]);
     }
@@ -78,29 +122,32 @@ class DiscordNotificationService
     public function tournamentRegistration(Tournament $tournament, TournamentTeam $team, ?User $user = null): void
     {
         $detailUrl = $this->tournamentUrl($tournament);
+        $imageUrl = $this->publicImageUrl($tournament->rules['cover_image'] ?? null) ?: $this->frontendUrl('/hero-tournament.png');
         $game = (string) ($tournament->rules['game'] ?? 'Astral4Gamer');
+        $title = trim((string) ($tournament->rules['title_en'] ?? '')) ?: $tournament->title;
         $isSolo = $this->isSoloTournament($tournament);
         $name = $isSolo ? (string) ($user?->name ?: $team->name) : $team->name;
         $message = $isSolo
-            ? "**{$name}** ({$game}) vient de s'inscrire à **{$tournament->title}**. Bonne chance à toi."
-            : "L'équipe **{$team->name}** ({$game}) vient de s'inscrire à **{$tournament->title}**. Bonne chance à toute l'équipe.";
+            ? "**{$name}** ({$game}) just registered for **{$title}**. Good luck."
+            : "Team **{$team->name}** ({$game}) just registered for **{$title}**. Good luck to the squad.";
 
         $this->send('tournaments', [
             'username' => config('services.discord.username', 'Astral4Gamer'),
             'avatar_url' => config('services.discord.avatar_url'),
             'allowed_mentions' => ['parse' => []],
             'embeds' => [[
-                'title' => 'Nouvelle inscription tournoi',
+                'title' => 'New Tournament Registration',
                 'description' => $message,
                 'url' => $detailUrl,
                 'color' => 0x22C55E,
+                'image' => ['url' => $imageUrl],
                 'fields' => array_values(array_filter([
-                    ['name' => 'Jeu', 'value' => $game, 'inline' => true],
+                    ['name' => 'Game', 'value' => $game, 'inline' => true],
                     ['name' => 'Format', 'value' => $this->teamType($tournament), 'inline' => true],
-                    ['name' => $isSolo ? 'Joueur' : 'Équipe', 'value' => $name, 'inline' => true],
-                    ['name' => 'Statut', 'value' => 'Inscription reçue', 'inline' => true],
+                    ['name' => $isSolo ? 'Player' : 'Team', 'value' => $name, 'inline' => true],
+                    ['name' => 'Status', 'value' => 'Registration received', 'inline' => true],
                 ])),
-                'footer' => ['text' => 'ASTRAL4GAMER - Inscriptions tournoi'],
+                'footer' => ['text' => 'ASTRAL4GAMER - Tournament Registrations'],
                 'timestamp' => now()->toIso8601String(),
             ]],
             'components' => [[
@@ -108,7 +155,7 @@ class DiscordNotificationService
                 'components' => [[
                     'type' => 2,
                     'style' => 5,
-                    'label' => 'Voir le tournoi',
+                    'label' => 'View Tournament',
                     'url' => $detailUrl,
                 ]],
             ]],
@@ -119,8 +166,10 @@ class DiscordNotificationService
     {
         $detailUrl = $this->tournamentUrl($tournament);
         $rules = $tournament->rules ?? [];
+        $imageUrl = $this->publicImageUrl($rules['cover_image'] ?? null) ?: $this->frontendUrl('/hero-tournament.png');
         $winnerName = (string) ($winner?->name ?: ($rules['winner_name'] ?? 'Gagnant à confirmer'));
         $game = (string) ($rules['game'] ?? 'Astral4Gamer');
+        $title = trim((string) ($rules['title_en'] ?? '')) ?: $tournament->title;
         $rewardUnit = (string) ($rules['reward_unit'] ?? 'FCFA');
         $reward = $this->money($tournament->prize_pool, $rewardUnit);
 
@@ -129,17 +178,18 @@ class DiscordNotificationService
             'avatar_url' => config('services.discord.avatar_url'),
             'allowed_mentions' => ['parse' => []],
             'embeds' => [[
-                'title' => 'Résultat tournoi',
-                'description' => "Le tournoi **{$tournament->title}** est terminé.\nFélicitations à **{$winnerName}** pour la victoire.",
+                'title' => 'Tournament Result',
+                'description' => "The tournament **{$title}** is completed.\nCongratulations to **{$winnerName}** for the win.",
                 'url' => $detailUrl,
                 'color' => 0xF59E0B,
+                'image' => ['url' => $imageUrl],
                 'fields' => [
-                    ['name' => 'Jeu', 'value' => $game, 'inline' => true],
+                    ['name' => 'Game', 'value' => $game, 'inline' => true],
                     ['name' => 'Format', 'value' => $this->teamType($tournament), 'inline' => true],
-                    ['name' => 'Gagnant', 'value' => $winnerName, 'inline' => true],
-                    ['name' => 'Gain', 'value' => $reward, 'inline' => true],
+                    ['name' => 'Winner', 'value' => $winnerName, 'inline' => true],
+                    ['name' => 'Prize', 'value' => $reward, 'inline' => true],
                 ],
-                'footer' => ['text' => 'ASTRAL4GAMER - Résultats officiels'],
+                'footer' => ['text' => 'ASTRAL4GAMER - Official Results'],
                 'timestamp' => now()->toIso8601String(),
             ]],
             'components' => [[
@@ -147,7 +197,7 @@ class DiscordNotificationService
                 'components' => [[
                     'type' => 2,
                     'style' => 5,
-                    'label' => 'Voir les détails',
+                    'label' => 'View Details',
                     'url' => $detailUrl,
                 ]],
             ]],
@@ -158,25 +208,28 @@ class DiscordNotificationService
     {
         $detailUrl = $this->tournamentUrl($tournament);
         $rules = $tournament->rules ?? [];
+        $imageUrl = $this->publicImageUrl($rules['cover_image'] ?? null) ?: $this->frontendUrl('/hero-tournament.png');
         $winnerName = (string) ($winner?->name ?: ($rules['winner_name'] ?? 'Gagnant'));
         $reward = $this->money($amount ?? $tournament->prize_pool, $unit ?? (string) ($rules['reward_unit'] ?? 'FCFA'));
-        $subject = $this->isSoloTournament($tournament) ? "Le joueur **{$winnerName}**" : "Super, l'équipe **{$winnerName}**";
+        $title = trim((string) ($rules['title_en'] ?? '')) ?: $tournament->title;
+        $subject = $this->isSoloTournament($tournament) ? "Player **{$winnerName}**" : "Team **{$winnerName}**";
 
         $this->send('tournaments', [
             'username' => config('services.discord.username', 'Astral4Gamer'),
             'avatar_url' => config('services.discord.avatar_url'),
             'allowed_mentions' => ['parse' => []],
             'embeds' => [[
-                'title' => 'Gain tournoi réclamé',
-                'description' => "{$subject} vient de réclamer ses gains pour **{$tournament->title}**.\nLes récompenses ont été envoyées par l'administration Astral4Gamer.",
+                'title' => 'Tournament Prize Claimed',
+                'description' => "{$subject} just claimed the prize for **{$title}**.\nRewards have been sent by the Astral4Gamer administration.",
                 'url' => $detailUrl,
                 'color' => 0x0EA5E9,
+                'image' => ['url' => $imageUrl],
                 'fields' => [
-                    ['name' => 'Gagnant', 'value' => $winnerName, 'inline' => true],
-                    ['name' => 'Gain envoyé', 'value' => $reward, 'inline' => true],
-                    ['name' => 'Statut', 'value' => 'Récompense envoyée', 'inline' => true],
+                    ['name' => 'Winner', 'value' => $winnerName, 'inline' => true],
+                    ['name' => 'Prize Sent', 'value' => $reward, 'inline' => true],
+                    ['name' => 'Status', 'value' => 'Reward sent', 'inline' => true],
                 ],
-                'footer' => ['text' => 'ASTRAL4GAMER - Réclamation validée'],
+                'footer' => ['text' => 'ASTRAL4GAMER - Claim Approved'],
                 'timestamp' => now()->toIso8601String(),
             ]],
         ]);
@@ -207,7 +260,7 @@ class DiscordNotificationService
                     : "**{$title}**\nUn live est programme sur Astral4Gamer. Ajoute-le a ton calendrier et prepare-toi.",
                 'url' => $watchUrl,
                 'color' => $isLiveNow ? 0x22C55E : $this->color(),
-                'thumbnail' => $stream->thumbnail_url ? ['url' => $stream->thumbnail_url] : null,
+                'image' => ($imageUrl = $this->publicImageUrl($stream->thumbnail_url)) ? ['url' => $imageUrl] : null,
                 'fields' => array_values(array_filter([
                     ['name' => 'Type', 'value' => $isYoutubeVideo ? ucfirst((string) $stream->type) : ($isLiveNow ? 'Live maintenant' : 'Evenement live'), 'inline' => true],
                     ['name' => 'Statut', 'value' => $isYoutubeVideo ? 'Disponible' : $this->labelStatus((string) $stream->status), 'inline' => true],
@@ -254,6 +307,7 @@ class DiscordNotificationService
 
             return "**{$product->name}** - {$this->money($price, $currency)} avec -{$discountPercent}% pendant 24h";
         })->implode("\n");
+        $imageUrl = $this->productImageUrl($items->first()) ?: $this->frontendUrl('/freefire-media/diamond-removebg-preview.png');
 
         $this->send('promotions', [
             'username' => config('services.discord.username', 'Astral4Gamer'),
@@ -264,6 +318,7 @@ class DiscordNotificationService
                 'description' => "Deux offres Astral4Gamer sont en promotion aujourd'hui.\n{$lines}",
                 'url' => $this->frontendUrl('/category/top-up'),
                 'color' => 0xF97316,
+                'image' => ['url' => $imageUrl],
                 'fields' => [
                     ['name' => 'Reduction', 'value' => "-{$discountPercent}%", 'inline' => true],
                     ['name' => 'Duree', 'value' => '24h', 'inline' => true],
@@ -300,6 +355,7 @@ class DiscordNotificationService
                 'description' => $lines ?: 'Le calendrier des giveaways arrive bientot.',
                 'url' => $this->frontendUrl('/tournois'),
                 'color' => 0x8B5CF6,
+                'image' => ['url' => $this->frontendUrl('/hero-tournament.png')],
                 'footer' => ['text' => 'ASTRAL4GAMER - Evenements communautaires'],
                 'timestamp' => now()->toIso8601String(),
             ]],
@@ -356,7 +412,7 @@ class DiscordNotificationService
             'avatar_url' => config('services.discord.avatar_url'),
             'allowed_mentions' => ['parse' => []],
             'embeds' => [[
-                'title' => 'Nouvelle recharge manuelle CODM à traiter',
+                'title' => 'Nouvelle recharge manuelle à traiter',
                 'description' => "La commande #{$order->id} a été payée et doit être traitée manuellement.",
                 'color' => 0xF59E0B,
                 'fields' => array_merge([
@@ -376,7 +432,7 @@ class DiscordNotificationService
     public function manualFulfillmentUpdated(Order $order, string $status): void
     {
         $product = Product::find($order->product_id);
-        $productName = $product?->name ?? 'Call of Duty Mobile';
+        $productName = $product?->name ?? 'Recharge manuelle';
         $isDelivered = $status === 'delivered';
 
         $this->send('community', [
@@ -384,7 +440,7 @@ class DiscordNotificationService
             'avatar_url' => config('services.discord.avatar_url'),
             'allowed_mentions' => ['parse' => []],
             'embeds' => [[
-                'title' => $isDelivered ? 'Recharge Call of Duty Mobile livrée' : 'Recharge Call of Duty Mobile en échec',
+                'title' => $isDelivered ? 'Recharge livrée' : 'Recharge en échec',
                 'description' => $isDelivered
                     ? "La recharge de **{$productName}** a été un grand succès."
                     : "La recharge de **{$productName}** a été un echec.",
@@ -392,7 +448,7 @@ class DiscordNotificationService
                 'fields' => [
                     ['name' => 'Commande', 'value' => '#'.$order->id, 'inline' => true],
                     ['name' => 'Statut', 'value' => $isDelivered ? 'Livrée' : 'Echec', 'inline' => true],
-                    ['name' => 'Jeu', 'value' => 'Call of Duty Mobile', 'inline' => true],
+                    ['name' => 'Jeu', 'value' => $product?->game ?? 'Astral4Gamer', 'inline' => true],
                 ],
                 'footer' => ['text' => 'ASTRAL4GAMER - Communaute CODM'],
                 'timestamp' => now()->toIso8601String(),
@@ -561,6 +617,42 @@ class DiscordNotificationService
         ]);
     }
 
+    public function resellerApiBlocked(ResellerPartner $partner, string $message, string $supportUrl): void
+    {
+        $payload = [
+            'username' => config('services.discord.username', 'Astral4Gamer'),
+            'avatar_url' => config('services.discord.avatar_url'),
+            'allowed_mentions' => ['parse' => []],
+            'embeds' => [[
+                'title' => 'API partenaire bloquée',
+                'description' => $message."\n\nL’accès API et le panel partenaire sont suspendus. Contactez le support Astral4Gamer via Discord pour vérification.",
+                'color' => 0xEF233C,
+                'fields' => [
+                    ['name' => 'Partenaire', 'value' => (string) ($partner->company_name ?: $partner->name), 'inline' => true],
+                    ['name' => 'Email', 'value' => (string) $partner->email, 'inline' => true],
+                    ['name' => 'Statut API', 'value' => (string) ($partner->api_status ?? 'suspended'), 'inline' => true],
+                ],
+                'footer' => ['text' => 'ASTRAL4GAMER - Sécurité API privée'],
+                'timestamp' => now()->toIso8601String(),
+            ]],
+            'components' => [[
+                'type' => 1,
+                'components' => [[
+                    'type' => 2,
+                    'style' => 5,
+                    'label' => 'Contacter le support',
+                    'url' => $supportUrl,
+                ]],
+            ]],
+        ];
+
+        if ($discordUserId = $this->partnerDiscordUserId($partner)) {
+            $this->sendDirectMessage($discordUserId, $payload);
+        }
+
+        $this->send('partners', $payload);
+    }
+
     public function resellerWalletEvent(ResellerPartner $partner, string $type, float $amount, float $balance, string $reference): void
     {
         $label = $type === 'credit' ? 'Recharge reseller confirmée' : 'Mouvement wallet reseller';
@@ -611,8 +703,11 @@ class DiscordNotificationService
             return;
         }
 
+        $payload = $this->englishPayload($payload);
+
         $webhookUrl = (string) config("services.discord.webhooks.{$webhookKey}", '');
         if ($webhookUrl === '') {
+            $this->sendToChannel($webhookKey, $payload);
             return;
         }
 
@@ -636,17 +731,348 @@ class DiscordNotificationService
         }
     }
 
+    private function sendToChannel(string $channelKey, array $payload): void
+    {
+        $channelId = (string) config("services.discord.channels.{$channelKey}", '');
+        $botToken = (string) config('services.discord.bot_token', '');
+
+        if ($channelId === '' || $botToken === '') {
+            return;
+        }
+
+        try {
+            $messagePayload = $payload;
+            unset($messagePayload['username'], $messagePayload['avatar_url']);
+            $authorization = str_starts_with($botToken, 'Bot ') ? $botToken : 'Bot '.$botToken;
+
+            $response = Http::timeout((int) config('services.discord.timeout', 8))
+                ->withHeaders(['Authorization' => $authorization])
+                ->asJson()
+                ->post("https://discord.com/api/v10/channels/{$channelId}/messages", $this->cleanPayload($messagePayload));
+
+            if ($response->failed()) {
+                Log::warning('Discord channel message failed.', [
+                    'channel' => $channelKey,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+            }
+        } catch (Throwable $exception) {
+            Log::warning('Discord channel message exception.', [
+                'channel' => $channelKey,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function sendDirectMessage(string $discordUserId, array $payload): void
+    {
+        $botToken = (string) config('services.discord.bot_token', '');
+
+        if ($botToken === '') {
+            return;
+        }
+
+        try {
+            $authorization = str_starts_with($botToken, 'Bot ') ? $botToken : 'Bot '.$botToken;
+            $dmResponse = Http::timeout((int) config('services.discord.timeout', 8))
+                ->withHeaders(['Authorization' => $authorization])
+                ->asJson()
+                ->post('https://discord.com/api/v10/users/@me/channels', ['recipient_id' => $discordUserId]);
+
+            if ($dmResponse->failed()) {
+                Log::warning('Discord DM channel creation failed.', [
+                    'user_id' => $discordUserId,
+                    'status' => $dmResponse->status(),
+                    'body' => $dmResponse->body(),
+                ]);
+                return;
+            }
+
+            $channelId = (string) data_get($dmResponse->json(), 'id');
+            if ($channelId === '') {
+                return;
+            }
+
+            $messagePayload = $payload;
+            unset($messagePayload['username'], $messagePayload['avatar_url']);
+
+            $messageResponse = Http::timeout((int) config('services.discord.timeout', 8))
+                ->withHeaders(['Authorization' => $authorization])
+                ->asJson()
+                ->post("https://discord.com/api/v10/channels/{$channelId}/messages", $this->cleanPayload($messagePayload));
+
+            if ($messageResponse->failed()) {
+                Log::warning('Discord DM message failed.', [
+                    'user_id' => $discordUserId,
+                    'status' => $messageResponse->status(),
+                    'body' => $messageResponse->body(),
+                ]);
+            }
+        } catch (Throwable $exception) {
+            Log::warning('Discord DM exception.', [
+                'user_id' => $discordUserId,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function partnerDiscordUserId(ResellerPartner $partner): ?string
+    {
+        $candidates = [
+            $partner->metadata['discord_user_id'] ?? null,
+            $partner->metadata['discord_id'] ?? null,
+            $partner->discord,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (! is_string($candidate) && ! is_numeric($candidate)) {
+                continue;
+            }
+
+            if (preg_match('/\d{15,25}/', (string) $candidate, $matches)) {
+                return $matches[0];
+            }
+        }
+
+        return null;
+    }
+
     private function cleanPayload(array $payload): array
     {
-        return collect($payload)
-            ->filter(fn ($value) => $value !== null && $value !== [])
-            ->map(fn ($value) => is_array($value) ? $this->cleanPayload($value) : $value)
-            ->all();
+        $cleaned = [];
+
+        foreach ($payload as $key => $value) {
+            if ($value === null) {
+                continue;
+            }
+
+            if (is_array($value)) {
+                if ($key === 'parse') {
+                    $cleaned[$key] = $value;
+                    continue;
+                }
+
+                $value = $this->cleanPayload($value);
+
+                if ($value === []) {
+                    continue;
+                }
+            }
+
+            $cleaned[$key] = $value;
+        }
+
+        return $cleaned;
+    }
+
+    private function englishPayload(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return collect($value)
+                ->map(fn ($item) => $this->englishPayload($item))
+                ->all();
+        }
+
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        return $this->englishText($value);
+    }
+
+    private function englishText(string $value): string
+    {
+        return strtr($value, [
+            'Nouvel article Astral4Gamer' => 'New Astral4Gamer Article',
+            'Un nouvel article est disponible sur le blog Astral4Gamer.' => 'A new article is available on the Astral4Gamer blog.',
+            'Publié' => 'Published',
+            'ASTRAL4GAMER - Annonces' => 'ASTRAL4GAMER - Announcements',
+            'Lire l article' => 'Read Article',
+            'Tournoi mis à jour' => 'Tournament Updated',
+            'Nouveau tournoi programmé' => 'New Tournament Scheduled',
+            'Les inscriptions sont ouvertes sur Astral4Gamer. Prépare-toi et viens tenter ta chance.' => 'Registrations are open on Astral4Gamer. Get ready and compete.',
+            'Jeu' => 'Game',
+            'Statut' => 'Status',
+            'Début' => 'Start',
+            'Debut' => 'Start',
+            'À gagner' => 'Prize',
+            'Région' => 'Region',
+            'Plateforme' => 'Platform',
+            'Inscription' => 'Register',
+            'Détails' => 'Details',
+            'Nouvelle inscription tournoi' => 'New Tournament Registration',
+            'Joueur' => 'Player',
+            'Équipe' => 'Team',
+            'Inscription reçue' => 'Registration Received',
+            'ASTRAL4GAMER - Inscriptions tournoi' => 'ASTRAL4GAMER - Tournament Registrations',
+            'Voir le tournoi' => 'View Tournament',
+            'Résultat tournoi' => 'Tournament Result',
+            'est terminé.' => 'is completed.',
+            'Félicitations à' => 'Congratulations to',
+            'pour la victoire.' => 'for the win.',
+            'Gagnant' => 'Winner',
+            'Gain' => 'Reward',
+            'ASTRAL4GAMER - Résultats officiels' => 'ASTRAL4GAMER - Official Results',
+            'Voir les détails' => 'View Details',
+            'Gain tournoi réclamé' => 'Tournament Reward Claimed',
+            'vient de réclamer ses gains pour' => 'just claimed their rewards for',
+            'Les récompenses ont été envoyées par l\'administration Astral4Gamer.' => 'The rewards were sent by Astral4Gamer administration.',
+            'Gain envoyé' => 'Reward Sent',
+            'Récompense envoyée' => 'Reward Sent',
+            'ASTRAL4GAMER - Réclamation validée' => 'ASTRAL4GAMER - Claim Approved',
+            'Nouvelle video disponible' => 'New Video Available',
+            'Live en cours' => 'Live Now',
+            'Evenement live programme' => 'Live Event Scheduled',
+            'Le live est en cours. Rejoins la diffusion et suis l\'action maintenant.' => 'The live is on. Join the stream and follow the action now.',
+            'Un live est programme sur Astral4Gamer. Ajoute-le a ton calendrier et prepare-toi.' => 'A live session is scheduled on Astral4Gamer. Add it to your calendar and get ready.',
+            'Live maintenant' => 'Live Now',
+            'Disponible' => 'Available',
+            'Tournoi lie' => 'Linked Tournament',
+            'ASTRAL4GAMER - Streams officiels' => 'ASTRAL4GAMER - Official Streams',
+            'Voir la video' => 'Watch Video',
+            'Suivre le live' => 'Watch Live',
+            'Aller voir' => 'Open',
+            'Ouvrir Astral4Gamer' => 'Open Astral4Gamer',
+            'Promotions boutique du jour' => 'Daily Store Promotions',
+            'Deux offres Astral4Gamer sont en promotion aujourd\'hui.' => 'Two Astral4Gamer offers are on promotion today.',
+            'avec' => 'with',
+            'pendant 24h' => 'for 24h',
+            'Reduction' => 'Discount',
+            'Duree' => 'Duration',
+            'Fin' => 'Ends',
+            'Dans 24h' => 'In 24h',
+            'ASTRAL4GAMER - Offres boutique' => 'ASTRAL4GAMER - Store Offers',
+            'Voir les promotions' => 'View Promotions',
+            'Calendrier giveaways Astral4Gamer' => 'Astral4Gamer Giveaway Calendar',
+            'Le calendrier des giveaways arrive bientot.' => 'The giveaway calendar is coming soon.',
+            'ASTRAL4GAMER - Evenements communautaires' => 'ASTRAL4GAMER - Community Events',
+            'Voir les evenements' => 'View Events',
+            'Demande support commande' => 'Order Support Request',
+            'demande une aide privee concernant une commande.' => 'requests private help about an order.',
+            'Commande' => 'Order',
+            'Statut commande' => 'Order Status',
+            'Montant' => 'Amount',
+            'Non verifie' => 'Not verified',
+            'Non renseigne' => 'Not provided',
+            'ASTRAL4GAMER - Support prive' => 'ASTRAL4GAMER - Private Support',
+            'Nouvelle recharge manuelle CODM à traiter' => 'New Manual CODM Top-Up To Process',
+            'a été payée et doit être traitée manuellement.' => 'was paid and must be processed manually.',
+            'Produit' => 'Product',
+            'Produit inconnu' => 'Unknown product',
+            'Client Astral4Gamer' => 'Astral4Gamer Customer',
+            'Email paiement' => 'Payment Email',
+            'Telephone' => 'Phone',
+            'Reference commande' => 'Order Reference',
+            'ASTRAL4GAMER - Fulfillment manuel' => 'ASTRAL4GAMER - Manual Fulfillment',
+            'Recharge Call of Duty Mobile livrée' => 'Call of Duty Mobile Top-Up Delivered',
+            'Recharge Call of Duty Mobile en échec' => 'Call of Duty Mobile Top-Up Failed',
+            'La recharge de' => 'The top-up for',
+            'a été un grand succès.' => 'was successful.',
+            'a été un echec.' => 'failed.',
+            'Livrée' => 'Delivered',
+            'Echec' => 'Failed',
+            'ASTRAL4GAMER - Communaute CODM' => 'ASTRAL4GAMER - CODM Community',
+            'Profil partage dans la communaute' => 'Profile Shared In The Community',
+            'partage son profil Astral4Gamer.' => 'shared their Astral4Gamer profile.',
+            'Rang' => 'Rank',
+            'ASTRAL4GAMER - Communaute' => 'ASTRAL4GAMER - Community',
+            'Voir le profil' => 'View Profile',
+            'Recherche team' => 'Team Search',
+            'cherche une team.' => 'is looking for a team.',
+            'Role recherche' => 'Wanted Role',
+            'Via Astral4Gamer' => 'Through Astral4Gamer',
+            'ASTRAL4GAMER - Recherche team' => 'ASTRAL4GAMER - Team Search',
+            'partage un clip/replay.' => 'shared a clip/replay.',
+            'Live passe / replay' => 'Past live / replay',
+            'ASTRAL4GAMER - Clips communaute' => 'ASTRAL4GAMER - Community Clips',
+            'Nouvelle demande de partenariat' => 'New Partnership Request',
+            'a soumis un dossier partenaire depuis Astral4Gamer.' => 'submitted a partner file from Astral4Gamer.',
+            'Référence' => 'Reference',
+            'Gain estimé' => 'Estimated Earnings',
+            'Pays' => 'Country',
+            'Lien' => 'Link',
+            'En attente d’analyse du dossier' => 'Waiting for file review',
+            'ASTRAL4GAMER - Dossier partenariat privé' => 'ASTRAL4GAMER - Private Partnership File',
+            'Partenaire reseller activé' => 'Reseller Partner Activated',
+            'peut maintenant utiliser l’API Astral4Gamer Reseller.' => 'can now use the Astral4Gamer Reseller API.',
+            'Marge Astral' => 'Astral Margin',
+            'Recharge reseller confirmée' => 'Reseller Top-Up Confirmed',
+            'Mouvement wallet reseller' => 'Reseller Wallet Movement',
+            'a un mouvement de solde reseller.' => 'has a reseller balance movement.',
+            'Solde actuel' => 'Current Balance',
+            'Alerte solde reseller faible' => 'Low Reseller Balance Alert',
+            'est sous le seuil minimum.' => 'is below the minimum threshold.',
+            'Solde' => 'Balance',
+            'Seuil' => 'Threshold',
+            'Action' => 'Action',
+            'Notifier le partenaire ou attendre sa recharge Moneroo.' => 'Notify the partner or wait for their Moneroo top-up.',
+        ]);
     }
 
     private function frontendUrl(string $path): string
     {
         return rtrim((string) config('services.google.frontend_url'), '/').$path;
+    }
+
+    private function productImageUrl(?Product $product): ?string
+    {
+        if (! $product) {
+            return null;
+        }
+
+        return $this->publicImageUrl(
+            $product->metadata['image_url']
+            ?? $product->metadata['raw']['image']
+            ?? $product->metadata['image']
+            ?? $product->metadata['thumbnail_url']
+            ?? $product->metadata['cover_image_url']
+            ?? null
+        );
+    }
+
+    private function publicImageUrl(mixed $value): ?string
+    {
+        if (is_array($value)) {
+            foreach (['cover_image_url', 'cover_image', 'image_url', 'image', 'thumbnail_url', 'thumbnail', 'url', 'src'] as $key) {
+                $url = $this->publicImageUrl($value[$key] ?? null);
+                if ($url) {
+                    return $url;
+                }
+            }
+
+            foreach ($value as $item) {
+                $url = $this->publicImageUrl($item);
+                if ($url) {
+                    return $url;
+                }
+            }
+
+            return null;
+        }
+
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        $url = trim($value);
+        if (str_starts_with($url, 'data:')) {
+            return null;
+        }
+
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            return $url;
+        }
+
+        if (str_starts_with($url, '/')) {
+            return $this->frontendUrl($url);
+        }
+
+        if (preg_match('#^(storage|uploads|images|img|media|assets|blog-assets|freefire-media)/#i', $url) === 1) {
+            return $this->frontendUrl('/'.$url);
+        }
+
+        return null;
     }
 
     private function tournamentUrl(Tournament $tournament): string
@@ -675,18 +1101,18 @@ class DiscordNotificationService
     private function labelStatus(string $status): string
     {
         return match ($status) {
-            'scheduled' => 'Programme',
-            'open' => 'Inscriptions ouvertes',
-            'live' => 'En direct',
-            'completed' => 'Termine',
-            default => $status !== '' ? ucfirst(str_replace('_', ' ', $status)) : 'A confirmer',
+            'scheduled' => 'Scheduled',
+            'open' => 'Registrations Open',
+            'live' => 'Live',
+            'completed' => 'Completed',
+            default => $status !== '' ? ucfirst(str_replace('_', ' ', $status)) : 'To be confirmed',
         };
     }
 
     private function money(mixed $amount, string $unit): string
     {
         if (! is_numeric($amount)) {
-            return 'A confirmer';
+            return 'To be confirmed';
         }
 
         $decimals = in_array(strtoupper($unit), ['USD', 'EUR'], true) ? 2 : 0;

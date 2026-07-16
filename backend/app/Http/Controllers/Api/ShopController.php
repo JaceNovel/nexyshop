@@ -11,8 +11,10 @@ use App\Models\Supplier;
 use App\Models\SupplierOrder;
 use App\Models\SupplierProduct;
 use App\Models\Tournament;
+use App\Services\FreeFire\FreeFireLookupService;
 use App\Services\Shop\PricingService;
 use App\Services\Suppliers\FazerCardsCatalogSyncService;
+use App\Services\Suppliers\FazerCardsGateway;
 use App\Services\Suppliers\Item4GamerCatalogSyncService;
 use App\Services\Suppliers\SupplierManager;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,6 +23,7 @@ use Illuminate\Http\Request;
 class ShopController extends Controller
 {
     private const HIDDEN_PUBLIC_TYPES = [];
+    private const FIRST_PURCHASE_PAID_STATUSES = ['paid', 'completed', 'delivered'];
 
     public function __construct(private readonly PricingService $pricing)
     {
@@ -89,12 +92,22 @@ class ShopController extends Controller
 
     public function product(string $product)
     {
+        return $this->productPayload($product);
+    }
+
+    public function customerProduct(Request $request, string $product)
+    {
+        return $this->productPayload($product, $request->user()?->id);
+    }
+
+    private function productPayload(string $product, ?int $userId = null): array
+    {
         $product = $this->resolvePublicProduct($product);
 
         abort_unless($product->active && ! $this->isHiddenPublicType($product), 404);
 
         return [
-            'data' => $this->serializeProduct($product->load(['primarySupplierProduct', 'supplierProducts'])),
+            'data' => $this->serializeProduct($product->load(['primarySupplierProduct', 'supplierProducts']), $userId),
             'recommended' => $this->publicCatalogQuery()
                 ->with('primarySupplierProduct')
                 ->whereKeyNot($product->id)
@@ -120,6 +133,7 @@ class ShopController extends Controller
                     'name' => $first->metadata['category'] ?? $first->game,
                     'game' => $first->game,
                     'type' => $first->metadata['type'] ?? 'top-up',
+                    'image_url' => $first->metadata['image_url'] ?? $first->metadata['raw']['image'] ?? null,
                     'products_count' => $items->count(),
                     'min_price' => $this->pricing->retailPrice($items->min('price')),
                 ];
@@ -168,7 +182,7 @@ class ShopController extends Controller
         return $suppliers->gateway($supplier)->getOrder($data['order_id']);
     }
 
-    public function order(Request $request)
+    public function order(Request $request, SupplierManager $suppliers)
     {
         $data = $request->validate([
             'product_id' => ['required', 'exists:products,id'],
@@ -182,13 +196,14 @@ class ShopController extends Controller
 
         $product = Product::with('supplierProducts')->findOrFail($data['product_id']);
         $quantity = (int) ($data['quantity'] ?? 1);
-        $checkoutPricing = $this->resolveCheckoutPricing($product, $data['variation_id'] ?? null);
+        $checkoutPricing = $this->resolveCheckoutPricing($product, $data['variation_id'] ?? null, $request->user()->id);
         $manualVariation = $checkoutPricing['manual_variation'];
         $supplierProduct = $checkoutPricing['supplier_product'];
         $publicVariation = $checkoutPricing['public_variation'];
         $supplierCost = $checkoutPricing['supplier_cost'];
         $unitPrice = $checkoutPricing['unit_price'];
         $unitCurrency = $checkoutPricing['currency'];
+        $playerVerification = $this->verifyCheckoutPlayer($product, $supplierProduct, $data, $suppliers);
 
         $order = Order::create([
             'product_id' => $data['product_id'],
@@ -204,14 +219,19 @@ class ShopController extends Controller
                 'supplier' => $product->metadata['supplier'] ?? 'manual',
                 'quantity' => $quantity,
                 'supplier_cost' => $supplierCost,
+                'base_unit_price' => $checkoutPricing['base_unit_price'],
+                'regular_unit_price' => $checkoutPricing['regular_unit_price'],
                 'margin_amount' => $unitPrice - $supplierCost,
+                'nexy_benefit_credit_xof' => $checkoutPricing['nexy_benefit_credit_xof'],
                 'display_unit_price' => $unitPrice,
                 'display_currency' => $unitCurrency,
                 'promotion' => $this->activePromotion($product),
+                'first_purchase_discount' => $checkoutPricing['first_purchase_discount'],
                 'manual_fulfillment' => (bool) ($product->metadata['manual_fulfillment'] ?? false),
                 'fulfillment_status' => (bool) ($product->metadata['manual_fulfillment'] ?? false) ? 'awaiting_payment' : null,
                 'required_fields' => $product->metadata['required_fields'] ?? [],
                 'supplier_fields' => $this->supplierFields($product, $data),
+                'player_verification' => $playerVerification,
             ],
         ]);
 
@@ -220,7 +240,7 @@ class ShopController extends Controller
         return response()->json($order, 201);
     }
 
-    public function guestOrder(Request $request)
+    public function guestOrder(Request $request, SupplierManager $suppliers)
     {
         $data = $request->validate([
             'product_id' => ['required', 'exists:products,id'],
@@ -241,6 +261,7 @@ class ShopController extends Controller
         $supplierCost = $checkoutPricing['supplier_cost'];
         $unitPrice = $checkoutPricing['unit_price'];
         $unitCurrency = $checkoutPricing['currency'];
+        $playerVerification = $this->verifyCheckoutPlayer($product, $supplierProduct, $data, $suppliers);
 
         $order = Order::create([
             'product_id' => $product->id,
@@ -257,7 +278,10 @@ class ShopController extends Controller
                 'payment_pending' => true,
                 'quantity' => $quantity,
                 'supplier_cost' => $supplierCost,
+                'base_unit_price' => $checkoutPricing['base_unit_price'],
+                'regular_unit_price' => $checkoutPricing['regular_unit_price'],
                 'margin_amount' => $unitPrice - $supplierCost,
+                'nexy_benefit_credit_xof' => $checkoutPricing['nexy_benefit_credit_xof'],
                 'display_unit_price' => $unitPrice,
                 'display_currency' => $unitCurrency,
                 'promotion' => $this->activePromotion($product),
@@ -265,6 +289,7 @@ class ShopController extends Controller
                 'fulfillment_status' => (bool) ($product->metadata['manual_fulfillment'] ?? false) ? 'awaiting_payment' : null,
                 'required_fields' => $product->metadata['required_fields'] ?? [],
                 'supplier_fields' => $this->supplierFields($product, $data),
+                'player_verification' => $playerVerification,
             ],
         ]);
 
@@ -324,21 +349,25 @@ class ShopController extends Controller
         );
     }
 
-    private function resolveCheckoutPricing(Product $product, ?string $variationId): array
+    private function resolveCheckoutPricing(Product $product, ?string $variationId, ?int $userId = null): array
     {
-        $publicVariation = $this->selectedPublicVariation($product, $variationId);
+        $publicVariation = $this->selectedPublicVariation($product, $variationId, $userId);
         $selectedVariationId = (string) ($publicVariation['variation_id'] ?? $variationId ?? '');
         $manualVariation = $this->selectedManualVariation($product, $selectedVariationId ?: $variationId);
         $supplierProduct = $manualVariation ? null : $this->selectedSupplierProduct($product, $selectedVariationId ?: $variationId);
         $supplierCost = $manualVariation
-            ? (float) ($manualVariation['price'] ?? 0)
+            ? (float) ($manualVariation['astral_base_price'] ?? $manualVariation['base_price'] ?? $manualVariation['price'] ?? 0)
             : (float) ($supplierProduct?->cost ?: $product->price);
         $unitPrice = (float) ($publicVariation['price'] ?? 0);
+        $firstPurchaseDiscount = $publicVariation['first_purchase_discount'] ?? null;
 
         if ($unitPrice <= 0) {
             $unitPrice = $manualVariation
                 ? (float) ($manualVariation['price'] ?? 0)
                 : $this->promoPrice($product, $this->pricing->retailPrice($supplierCost));
+            $discounted = $this->firstPurchasePrice($product, $unitPrice, $supplierCost, $userId);
+            $unitPrice = $discounted['price'];
+            $firstPurchaseDiscount = $discounted['discount'];
         }
 
         return [
@@ -346,14 +375,18 @@ class ShopController extends Controller
             'manual_variation' => $manualVariation,
             'supplier_product' => $supplierProduct,
             'supplier_cost' => $supplierCost,
+            'base_unit_price' => $supplierCost,
             'unit_price' => round($unitPrice, 2),
+            'regular_unit_price' => round((float) ($publicVariation['regular_price'] ?? $unitPrice), 2),
+            'first_purchase_discount' => $firstPurchaseDiscount,
             'currency' => (string) ($publicVariation['currency'] ?? $product->currency),
+            'nexy_benefit_credit_xof' => (int) ($manualVariation['nexy_benefit_credit_xof'] ?? 0),
         ];
     }
 
-    private function selectedPublicVariation(Product $product, ?string $variationId): ?array
+    private function selectedPublicVariation(Product $product, ?string $variationId, ?int $userId = null): ?array
     {
-        $variations = collect($this->serializeProduct($product)['variations'] ?? []);
+        $variations = collect($this->serializeProduct($product, $userId)['variations'] ?? []);
 
         if ($variations->isEmpty()) {
             return null;
@@ -371,19 +404,22 @@ class ShopController extends Controller
         return $variations->first();
     }
 
-    private function serializeProduct(Product $product): array
+    private function serializeProduct(Product $product, ?int $userId = null): array
     {
         $product->loadMissing('supplierProducts');
-        $manualVariations = $this->manualVariations($product);
+        $manualVariations = $this->manualVariations($product, $userId);
         $variations = $manualVariations->isNotEmpty()
             ? $manualVariations
             : $product->supplierProducts
             ->where('active', true)
             ->sortBy('cost')
-            ->map(function (SupplierProduct $supplierProduct) use ($product) {
+            ->map(function (SupplierProduct $supplierProduct) use ($product, $userId) {
+                $priceOverride = $this->publicVariationPriceOverride($product, (string) $supplierProduct->external_sku);
                 $variationPrice = 0;
 
-                if ((float) $supplierProduct->cost > 0) {
+                if ($priceOverride) {
+                    $variationPrice = (float) $priceOverride['price'];
+                } elseif ((float) $supplierProduct->cost > 0) {
                     $variationPrice = $this->pricing->retailPrice($supplierProduct->cost);
                 }
 
@@ -395,15 +431,17 @@ class ShopController extends Controller
                     $variationPrice = (float) ($supplierProduct->metadata['retail_price'] ?? 0);
                 }
 
-                $retailPrice = $this->promoPrice($product, $variationPrice);
+                $retailPrice = $priceOverride ? $variationPrice : $this->promoPrice($product, $variationPrice);
+                $discounted = $this->firstPurchasePrice($product, $retailPrice, (float) $supplierProduct->cost, $userId);
 
                 return [
                     'id' => $supplierProduct->id,
                     'variation_id' => (string) $supplierProduct->external_sku,
                     'name' => $supplierProduct->metadata['name'] ?? $product->name,
-                    'price' => $retailPrice,
-                    'regular_price' => $variationPrice,
-                    'currency' => $supplierProduct->metadata['currency'] ?? $product->currency,
+                    'price' => $discounted['price'],
+                    'regular_price' => $retailPrice,
+                    'first_purchase_discount' => $discounted['discount'],
+                    'currency' => $priceOverride['currency'] ?? $supplierProduct->metadata['currency'] ?? $product->currency,
                 ];
             })
             ->values();
@@ -431,6 +469,8 @@ class ShopController extends Controller
         }
 
         $visibleRetailPrice = $this->promoPrice($product, $visibleRetailPrice);
+        $productDiscounted = $this->firstPurchasePrice($product, $visibleRetailPrice, (float) $product->price, $userId);
+        $visibleRetailPrice = $productDiscounted['price'];
         $promotion = $this->activePromotion($product);
         $regularPriceRange = $priceRange;
 
@@ -441,9 +481,26 @@ class ShopController extends Controller
             ];
         }
 
+        if ($this->userCanUseFirstPurchaseDiscount($userId)) {
+            $discountedPrices = $variations
+                ->pluck('price')
+                ->filter(fn ($price) => (float) $price > 0)
+                ->values();
+
+            if ($discountedPrices->isNotEmpty()) {
+                $priceRange = [
+                    'min' => (float) $discountedPrices->min(),
+                    'max' => (float) $discountedPrices->max(),
+                ];
+            }
+        }
+
         return [
             'id' => $product->id,
             'name' => $product->name,
+            'name_fr' => $product->metadata['name_fr'] ?? null,
+            'name_en' => $product->metadata['name_en'] ?? null,
+            'names' => $product->metadata['names'] ?? null,
             'game' => $product->game,
             'sku' => $this->publicProductReference($product),
             'public_reference' => $this->publicProductReference($product),
@@ -452,6 +509,9 @@ class ShopController extends Controller
             'currency' => $product->currency,
             'image_url' => $product->metadata['image_url'] ?? $product->metadata['raw']['image'] ?? null,
             'description' => $product->metadata['description'] ?? null,
+            'description_fr' => $product->metadata['description_fr'] ?? ($product->metadata['descriptions']['fr'] ?? null),
+            'description_en' => $product->metadata['description_en'] ?? ($product->metadata['descriptions']['en'] ?? null),
+            'descriptions' => $product->metadata['descriptions'] ?? null,
             'delivery' => $product->metadata['delivery'] ?? 'automatic',
             'requires_uid' => (bool) ($product->metadata['requires_uid'] ?? true),
             'required_fields' => $product->metadata['required_fields'] ?? [],
@@ -465,11 +525,18 @@ class ShopController extends Controller
             'supplier' => 'Astral4gamer',
             'variation_id' => $defaultVariationId,
             'promotion' => $promotion,
+            'first_purchase_discount' => $productDiscounted['discount'],
         ];
     }
 
     private function publicProductReference(Product $product): string
     {
+        $metadataReference = trim((string) ($product->metadata['public_reference'] ?? ''));
+
+        if ($metadataReference !== '') {
+            return $metadataReference;
+        }
+
         $type = match ($product->metadata['type'] ?? 'top-up') {
             'gift-card', 'gift-cards' => 'giftcard',
             'game-key', 'game-keys' => 'gamekey',
@@ -502,6 +569,26 @@ class ShopController extends Controller
         return $activeSupplierProducts->sortBy('cost')->first();
     }
 
+    private function publicVariationPriceOverride(Product $product, string $variationId): ?array
+    {
+        $override = $product->metadata['public_variation_prices'][$variationId]
+            ?? $product->metadata['nexy_display_prices'][$variationId]
+            ?? null;
+
+        if (is_numeric($override)) {
+            return ['price' => round((float) $override, 2), 'currency' => $product->currency];
+        }
+
+        if (! is_array($override) || ! isset($override['price']) || ! is_numeric($override['price'])) {
+            return null;
+        }
+
+        return [
+            'price' => round((float) $override['price'], 2),
+            'currency' => strtoupper((string) ($override['currency'] ?? $product->currency)),
+        ];
+    }
+
     private function selectedManualVariation(Product $product, ?string $variationId): ?array
     {
         $variations = $this->manualVariations($product);
@@ -521,20 +608,97 @@ class ShopController extends Controller
         return $variations->first();
     }
 
-    private function manualVariations(Product $product)
+    private function manualVariations(Product $product, ?int $userId = null)
     {
         return collect($product->metadata['manual_variations'] ?? [])
             ->filter(fn ($item) => is_array($item) && ! empty($item['variation_id']) && ! empty($item['name']))
-            ->map(fn (array $item, int $index) => [
-                'id' => 'manual-'.$product->id.'-'.$index,
-                'variation_id' => (string) $item['variation_id'],
-                'name' => (string) $item['name'],
-                'price' => round((float) ($item['price'] ?? 0), 2),
-                'regular_price' => round((float) ($item['price'] ?? 0), 2),
-                'currency' => (string) ($item['currency'] ?? $product->currency),
-            ])
+            ->map(function (array $item, int $index) use ($product, $userId) {
+                $regularPrice = round((float) ($item['price'] ?? 0), 2);
+                $basePrice = round((float) ($item['astral_base_price'] ?? $item['base_price'] ?? $item['price'] ?? 0), 2);
+                $discounted = $this->firstPurchasePrice($product, $regularPrice, $basePrice, $userId);
+
+                return [
+                    'id' => 'manual-'.$product->id.'-'.$index,
+                    'variation_id' => (string) $item['variation_id'],
+                    'name' => (string) $item['name'],
+                    'name_fr' => $item['name_fr'] ?? null,
+                    'name_en' => $item['name_en'] ?? null,
+                    'names' => $item['names'] ?? null,
+                    'price' => $discounted['price'],
+                    'regular_price' => $regularPrice,
+                    'first_purchase_discount' => $discounted['discount'],
+                    'currency' => (string) ($item['currency'] ?? $product->currency),
+                    'astral_base_price' => $basePrice,
+                    'nexy_benefit_credit_xof' => (int) ($item['nexy_benefit_credit_xof'] ?? 0),
+                ];
+            })
             ->sortBy('price')
             ->values();
+    }
+
+    private function userCanUseFirstPurchaseDiscount(?int $userId): bool
+    {
+        if (! $userId) {
+            return false;
+        }
+
+        return ! Order::query()
+            ->where('user_id', $userId)
+            ->where(function (Builder $builder) {
+                $builder->whereIn('status', self::FIRST_PURCHASE_PAID_STATUSES)
+                    ->orWhere(function (Builder $pending) {
+                        $pending->where('status', 'pending_payment')
+                            ->whereNotNull('metadata->first_purchase_discount');
+                    });
+            })
+            ->exists();
+    }
+
+    private function firstPurchasePrice(Product $product, float $price, float $supplierCost, ?int $userId): array
+    {
+        $price = round(max(0, $price), (int) config('services.shop.price_decimals', 2));
+
+        if (! $this->userCanUseFirstPurchaseDiscount($userId) || $price <= 0 || $supplierCost <= 0) {
+            return ['price' => $price, 'discount' => null];
+        }
+
+        $maxRequestedPercent = (float) config('services.shop.first_purchase_discount_percent', 5);
+        $minimumProfit = (float) config('services.shop.first_purchase_discount_min_profit', 0.01);
+        $safeMinimumPrice = $supplierCost + max(0.01, $minimumProfit);
+
+        if ($price <= $safeMinimumPrice) {
+            return ['price' => $price, 'discount' => null];
+        }
+
+        $safePercent = (($price - $safeMinimumPrice) / $price) * 100;
+        $discountPercent = floor(min($maxRequestedPercent, $safePercent) * 100) / 100;
+
+        if ($discountPercent <= 0) {
+            return ['price' => $price, 'discount' => null];
+        }
+
+        $discountedPrice = round($price * (1 - ($discountPercent / 100)), (int) config('services.shop.price_decimals', 2));
+
+        if ($discountedPrice <= $supplierCost) {
+            $discountedPrice = round($supplierCost + $minimumProfit, (int) config('services.shop.price_decimals', 2));
+        }
+
+        if ($discountedPrice >= $price) {
+            return ['price' => $price, 'discount' => null];
+        }
+
+        return [
+            'price' => $discountedPrice,
+            'discount' => [
+                'active' => true,
+                'type' => 'first_purchase',
+                'discount_percent' => $discountPercent,
+                'label' => 'Offre premier achat',
+                'original_price' => $price,
+                'discounted_price' => $discountedPrice,
+                'minimum_profit' => $minimumProfit,
+            ],
+        ];
     }
 
     private function supplierFields(Product $product, array $data): array
@@ -557,6 +721,130 @@ class ShopController extends Controller
             ->mapWithKeys(fn (string $key) => [$key => $provided[$key] ?? $fallback])
             ->filter(fn ($value) => $value !== null && $value !== '')
             ->all();
+    }
+
+    private function verifyCheckoutPlayer(Product $product, ?SupplierProduct $supplierProduct, array $data, SupplierManager $suppliers): ?array
+    {
+        if (($product->metadata['validation_provider'] ?? null) === 'free_fire') {
+            return $this->verifyManualFreeFirePlayer($product, $data);
+        }
+
+        $variationId = (string) ($supplierProduct?->external_sku ?? $data['variation_id'] ?? '');
+        $categoryId = FazerCardsGateway::decodedTopupCategory($variationId);
+
+        if (! $categoryId || ! $this->requiresCheckoutPlayerValidation($categoryId)) {
+            return null;
+        }
+
+        $supplier = Supplier::query()->where('slug', 'fazercards')->whereActive(true)->first();
+        abort_unless($supplier, 503, 'Service de vérification joueur indisponible.');
+
+        $gateway = $suppliers->gateway($supplier);
+        abort_unless($gateway instanceof FazerCardsGateway, 503, 'Service de vérification joueur indisponible.');
+
+        $fields = $this->supplierFields($product, $data);
+        $gameUid = trim((string) ($data['game_uid'] ?? ''));
+
+        if ($gameUid !== '') {
+            $fields += [
+                'player_id' => $gameUid,
+                'user_id' => $gameUid,
+                'uid' => $gameUid,
+                'account_id' => $gameUid,
+            ];
+        }
+
+        try {
+            $validation = $gateway->validateTopupSku($variationId, $fields);
+        } catch (\Throwable $exception) {
+            if ($this->isSupplierValidationUnavailable($exception) && $this->hasValidRequiredCheckoutFields($categoryId, $fields, $gameUid)) {
+                return [
+                    'source' => 'format_validation',
+                    'category_id' => $categoryId,
+                    'verified_at' => now()->toIso8601String(),
+                    'nickname' => $data['nickname'] ?? $gameUid,
+                    'response' => ['validation' => 'supplier_unavailable_format_checked'],
+                ];
+            }
+
+            abort(422, 'ID joueur invalide ou introuvable pour ce produit. Vérifie les informations du compte avant de payer.');
+        }
+
+        abort_unless($this->isSuccessfulTopupValidation($validation), 422, $validation['message'] ?? $validation['error'] ?? 'ID joueur invalide ou introuvable pour ce produit.');
+
+        return [
+            'source' => 'fazercards',
+            'category_id' => $categoryId,
+            'verified_at' => now()->toIso8601String(),
+            'nickname' => $validation['nickname'] ?? $validation['username'] ?? data_get($validation, 'data.nickname') ?? data_get($validation, 'data.username') ?? null,
+            'response' => $validation,
+        ];
+    }
+
+    private function requiresCheckoutPlayerValidation(string $categoryId): bool
+    {
+        return preg_match('/^(genshin_impact|pubg_|mobile_legends)/', $categoryId) === 1;
+    }
+
+    private function isSuccessfulTopupValidation(array $validation): bool
+    {
+        foreach (['valid', 'verified', 'success', 'data.valid', 'data.verified', 'data.success'] as $key) {
+            $value = data_get($validation, $key);
+
+            if ($value !== null) {
+                return (bool) $value;
+            }
+        }
+
+        if (array_key_exists('ok', $validation)) {
+            return (bool) $validation['ok'];
+        }
+
+        return true;
+    }
+
+    private function verifyManualFreeFirePlayer(Product $product, array $data): array
+    {
+        $fields = $this->supplierFields($product, $data);
+        $gameUid = trim((string) ($data['game_uid'] ?? $fields['player_id'] ?? $fields['uid'] ?? ''));
+        $region = trim((string) ($fields['region'] ?? $product->metadata['default_region'] ?? config('services.freefire.lookup.default_region', 'me')));
+
+        abort_if($gameUid === '', 422, 'ID Free Fire requis.');
+        abort_if($region === '', 422, 'Region Free Fire requise.');
+
+        try {
+            return app(FreeFireLookupService::class)->validateUid($gameUid, $region);
+        } catch (\Throwable) {
+            abort(422, 'ID Free Fire incorrect ou verification indisponible.');
+        }
+    }
+
+    private function isSupplierValidationUnavailable(\Throwable $exception): bool
+    {
+        return str_contains($exception->getMessage(), 'ID validation is not available');
+    }
+
+    private function hasValidRequiredCheckoutFields(string $categoryId, array $fields, string $gameUid): bool
+    {
+        $playerId = trim((string) ($fields['player_id'] ?? $fields['user_id'] ?? $fields['uid'] ?? $fields['account_id'] ?? $gameUid));
+
+        if ($playerId === '') {
+            return false;
+        }
+
+        if (str_starts_with($categoryId, 'genshin_impact')) {
+            return preg_match('/^\d{6,12}$/', $playerId) === 1 && trim((string) ($fields['server'] ?? '')) !== '';
+        }
+
+        if (str_starts_with($categoryId, 'mobile_legends')) {
+            return preg_match('/^\d{4,20}$/', $playerId) === 1 && preg_match('/^\d{1,10}$/', (string) ($fields['server_id'] ?? '')) === 1;
+        }
+
+        if (str_starts_with($categoryId, 'pubg_')) {
+            return preg_match('/^[A-Za-z0-9_\-]{5,40}$/', $playerId) === 1;
+        }
+
+        return true;
     }
 
     private function resolvePublicProduct(string $value): Product

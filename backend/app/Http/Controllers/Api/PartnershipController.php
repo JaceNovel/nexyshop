@@ -87,7 +87,7 @@ class PartnershipController extends Controller
 
     private function authorizeBot(Request $request): void
     {
-        $expected = (string) config('services.discord.bot_token');
+        $expected = (string) config('services.discord.backend_token');
         abort_if($expected === '', 403, 'Bot token non configure.');
         abort_unless(hash_equals($expected, (string) $request->header('X-Astral-Bot-Token')), 403, 'Bot token invalide.');
     }

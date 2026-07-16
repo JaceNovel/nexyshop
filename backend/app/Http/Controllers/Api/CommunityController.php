@@ -9,6 +9,7 @@ use App\Models\YoutubeVideo;
 use App\Services\Discord\DiscordNotificationService;
 use App\Services\Video\YouTubeEngagementService;
 use Illuminate\Http\Request;
+use Throwable;
 
 class CommunityController extends Controller
 {
@@ -66,7 +67,17 @@ class CommunityController extends Controller
 
         abort_unless($video || ! empty($data['youtube_video_id']), 422, 'Selectionne une video ou un replay.');
 
-        $discord->communityClipShare($request->user(), $video, $data);
+        try {
+            $discord->communityClipShare($request->user(), $video, $data);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Clip enregistre, mais la publication Discord est momentanement indisponible.',
+                'status' => 'clip_saved_discord_failed',
+            ], 202);
+        }
+
         $this->record($request, 'clip_shared', $targetType, $targetId, $data['youtube_video_id'] ?? $video?->youtube_video_id, $data);
 
         return response()->json(['message' => 'Clip partage dans la communaute.'], 201);
@@ -78,7 +89,14 @@ class CommunityController extends Controller
             'youtube_video_id' => ['required', 'string', 'max:80'],
         ]);
 
-        $result = $youtube->likeVideo($request->user(), $data['youtube_video_id']);
+        try {
+            $result = $youtube->likeVideo($request->user(), $data['youtube_video_id']);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json(['message' => $this->youtubeActionMessage($exception)], 422);
+        }
+
         $this->record($request, 'youtube_like', 'youtube_video', null, $data['youtube_video_id'], $result);
 
         return response()->json($result);
@@ -86,7 +104,14 @@ class CommunityController extends Controller
 
     public function subscribeYoutube(Request $request, YouTubeEngagementService $youtube)
     {
-        $result = $youtube->subscribeToConfiguredChannel($request->user());
+        try {
+            $result = $youtube->subscribeToConfiguredChannel($request->user());
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json(['message' => $this->youtubeActionMessage($exception)], 422);
+        }
+
         $this->record($request, 'youtube_subscribe', 'youtube_channel', null, null, $result);
 
         return response()->json($result);
@@ -118,5 +143,24 @@ class CommunityController extends Controller
             'status' => 'sent',
             'metadata' => $metadata,
         ]);
+    }
+
+    private function youtubeActionMessage(Throwable $exception): string
+    {
+        $message = $exception->getMessage();
+
+        if (str_contains($message, 'Reconnecte Google') || str_contains($message, 'Connexion Google')) {
+            return $message;
+        }
+
+        if (str_contains($message, 'insufficientPermissions') || str_contains($message, 'forbidden') || str_contains($message, '403')) {
+            return 'Reconnecte Google pour autoriser les actions YouTube, puis reessaie.';
+        }
+
+        if (str_contains($message, 'Chaine YouTube non configuree')) {
+            return $message;
+        }
+
+        return 'Action YouTube indisponible pour le moment. Reessaie dans quelques instants.';
     }
 }

@@ -11,6 +11,7 @@ use App\Models\Replay;
 use App\Models\Tournament;
 use App\Services\AstralNotificationService;
 use App\Services\BloggerService;
+use App\Services\Discord\DiscordNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -25,7 +26,7 @@ class AdminBlogPostController extends Controller
             ->paginate((int) $request->query('per_page', 20));
     }
 
-    public function store(Request $request, AstralNotificationService $notifications)
+    public function store(Request $request, AstralNotificationService $notifications, DiscordNotificationService $discord)
     {
         $data = $request->validate([
             'title' => ['required', 'string', 'max:180'],
@@ -44,7 +45,7 @@ class AdminBlogPostController extends Controller
         ]);
 
         if ($post->status === 'published') {
-            $this->announcePublishedPost($post, $notifications);
+            $this->announcePublishedPost($post, $notifications, $discord);
             $this->publishToBloggerIfEnabled($post);
         }
 
@@ -56,7 +57,7 @@ class AdminBlogPostController extends Controller
         return $blogPost->load('tournament', 'replay', 'highlight');
     }
 
-    public function update(Request $request, BlogPost $blogPost, AstralNotificationService $notifications)
+    public function update(Request $request, BlogPost $blogPost, AstralNotificationService $notifications, DiscordNotificationService $discord)
     {
         $wasPublished = $blogPost->status === 'published';
         $data = $request->validate([
@@ -75,7 +76,7 @@ class AdminBlogPostController extends Controller
         $blogPost->update($data);
 
         if (! $wasPublished && $blogPost->status === 'published') {
-            $this->announcePublishedPost($blogPost->refresh(), $notifications);
+            $this->announcePublishedPost($blogPost->refresh(), $notifications, $discord);
         }
 
         if ($blogPost->status === 'published') {
@@ -123,7 +124,7 @@ class AdminBlogPostController extends Controller
         return response()->json(['message' => 'Resume hebdomadaire cree en brouillon.', 'data' => $post]);
     }
 
-    private function announcePublishedPost(BlogPost $post, AstralNotificationService $notifications): void
+    private function announcePublishedPost(BlogPost $post, AstralNotificationService $notifications, DiscordNotificationService $discord): void
     {
         $notifications->broadcast([
             'channel' => 'bell',
@@ -135,6 +136,8 @@ class AdminBlogPostController extends Controller
             'action_url' => rtrim((string) config('services.google.frontend_url'), '/').'/blog/'.$post->slug,
             'data' => ['blog_post_id' => $post->id],
         ], true);
+
+        $discord->blogPostPublished($post);
     }
 
     private function publishToBloggerIfEnabled(BlogPost $post): void

@@ -66,7 +66,7 @@ class PubgController extends Controller
     {
         try {
             return response()->json($pubg->leaderboard(
-                (string) $request->query('season', 'lifetime'),
+                (string) $request->query('season', 'current'),
                 (string) $request->query('mode', 'squad-fpp'),
                 (string) $request->query('region', 'pc-eu')
             ));

@@ -130,8 +130,12 @@ class PubgApiService
 
     public function leaderboard(string $seasonId = 'lifetime', string $gameMode = 'squad-fpp', string $region = 'pc-eu'): array
     {
-        $region = trim($region) !== '' ? trim($region) : 'pc-eu';
-        $seasonId = trim($seasonId) !== '' ? trim($seasonId) : 'lifetime';
+        $region = $this->normalizeLeaderboardShard($region);
+        $seasonPlatform = $this->seasonPlatformForLeaderboardShard($region);
+        $seasonId = trim($seasonId) !== '' ? trim($seasonId) : 'current';
+        if (in_array(mb_strtolower($seasonId), ['current', 'live', 'latest', 'lifetime'], true)) {
+            $seasonId = $this->currentSeasonId($seasonPlatform);
+        }
         $gameMode = trim($gameMode) !== '' ? trim($gameMode) : 'squad-fpp';
         $cacheKey = 'pubg:leaderboard:'.$region.':'.$seasonId.':'.$gameMode;
 
@@ -156,6 +160,30 @@ class PubgApiService
             }
 
             return ['data' => $entries];
+        });
+    }
+
+    private function currentSeasonId(string $platform): string
+    {
+        $cacheKey = 'pubg:season:current:'.$platform;
+
+        return Cache::remember($cacheKey, now()->addHours(6), function () use ($platform) {
+            $payload = $this->getJson('/shards/'.$platform.'/seasons');
+            $seasons = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+
+            foreach ($seasons as $season) {
+                $attributes = is_array($season['attributes'] ?? null) ? $season['attributes'] : [];
+                if (($attributes['isCurrentSeason'] ?? false) && ! empty($season['id'])) {
+                    return (string) $season['id'];
+                }
+            }
+
+            $latest = collect($seasons)->last(fn ($season) => is_array($season) && ! empty($season['id']));
+            if (is_array($latest) && ! empty($latest['id'])) {
+                return (string) $latest['id'];
+            }
+
+            throw new RuntimeException('Saison PUBG courante introuvable.');
         });
     }
 
@@ -331,7 +359,24 @@ class PubgApiService
     private function normalizePlatform(string $platform): string
     {
         $platform = mb_strtolower(trim($platform));
+        if (str_starts_with($platform, 'pc-')) return 'steam';
+        if (in_array($platform, ['eu', 'na', 'as', 'krjp', 'sa', 'sea', 'oc'], true)) return 'steam';
         return $platform !== '' ? $platform : 'steam';
+    }
+
+    private function normalizeLeaderboardShard(string $shard): string
+    {
+        $shard = mb_strtolower(trim($shard));
+        if ($shard === '' || $shard === 'steam' || $shard === 'pc') return 'pc-eu';
+        if (in_array($shard, ['eu', 'na', 'as', 'krjp', 'sa', 'sea', 'oc'], true)) return 'pc-'.$shard;
+        return $shard;
+    }
+
+    private function seasonPlatformForLeaderboardShard(string $shard): string
+    {
+        if (str_starts_with($shard, 'pc-')) return 'steam';
+        if (in_array($shard, ['xbox', 'psn'], true)) return $shard;
+        return $this->normalizePlatform($shard);
     }
 
     private function numberOrZero(mixed $value): int|float

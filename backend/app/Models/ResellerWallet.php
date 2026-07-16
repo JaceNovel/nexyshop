@@ -8,9 +8,32 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ResellerWallet extends Model
 {
-    protected $fillable = ['reseller_partner_id', 'balance', 'currency'];
+    protected $fillable = [
+        'reseller_partner_id',
+        'balance',
+        'currency',
+        'available_balance',
+        'pending_balance',
+        'credit_balance',
+        'total_recharged',
+        'total_spent',
+        'total_borrowed',
+        'total_repaid',
+        'total_fees_paid',
+        'wallet_status',
+    ];
 
-    protected $casts = ['balance' => 'float'];
+    protected $casts = [
+        'balance' => 'float',
+        'available_balance' => 'float',
+        'pending_balance' => 'float',
+        'credit_balance' => 'float',
+        'total_recharged' => 'float',
+        'total_spent' => 'float',
+        'total_borrowed' => 'float',
+        'total_repaid' => 'float',
+        'total_fees_paid' => 'float',
+    ];
 
     public function partner(): BelongsTo
     {
